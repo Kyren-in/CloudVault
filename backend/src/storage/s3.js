@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListBucketsCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { StorageProvider } from './provider.js';
 
 export class S3StorageProvider extends StorageProvider {
@@ -71,12 +71,17 @@ export class S3StorageProvider extends StorageProvider {
   async checkHealth() {
     if (!this.enabled) return false;
     try {
-      // List buckets is a simple check to see if credentials and connection work
-      const command = new ListBucketsCommand({});
+      const key = this.name.toUpperCase();
+      const bucket = process.env[`${key}_BUCKET_NAME`] || process.env.CLOUD_BUCKET_NAME || 'cloudvault-bucket';
+      
+      const command = new ListObjectsV2Command({
+        Bucket: bucket,
+        MaxKeys: 1
+      });
       await this.client.send(command);
       return true;
     } catch (err) {
-      console.error('AWS S3 health check failed:', err.message);
+      console.error(`S3 health check failed for ${this.name}:`, err.message);
       return false;
     }
   }
