@@ -66,12 +66,14 @@ class StorageManager {
       }
 
       // 5. Supabase Storage (S3 adapter)
-      if (process.env.SUPABASE_ACCESS_KEY_ID && process.env.SUPABASE_SECRET_ACCESS_KEY) {
+      const supabaseKeyId = process.env.SUPABASE_ACCESS_KEY_ID || process.env.GCP_S3_ACCESS_KEY_ID;
+      const supabaseSecret = process.env.SUPABASE_SECRET_ACCESS_KEY || process.env.GCP_S3_SECRET_ACCESS_KEY;
+      if (supabaseKeyId && supabaseSecret) {
         this.providers.supabase = new S3StorageProvider('supabase', {
-          region: process.env.SUPABASE_REGION || 'ap-southeast-1',
-          endpoint: process.env.SUPABASE_ENDPOINT,
-          accessKeyId: process.env.SUPABASE_ACCESS_KEY_ID,
-          secretAccessKey: process.env.SUPABASE_SECRET_ACCESS_KEY
+          region: process.env.SUPABASE_REGION || process.env.GCP_S3_REGION || 'ap-southeast-1',
+          endpoint: process.env.SUPABASE_ENDPOINT || process.env.GCP_S3_ENDPOINT,
+          accessKeyId: supabaseKeyId,
+          secretAccessKey: supabaseSecret
         });
       }
 
@@ -114,8 +116,17 @@ class StorageManager {
         }
       }
 
+      let providerName = friendlyNames[key] || `Custom S3 (${key})`;
+      if (key === 'aws' && process.env.AWS_ENDPOINT) {
+        if (process.env.AWS_ENDPOINT.includes('backblazeb2') || process.env.AWS_ENDPOINT.includes('backblaze')) {
+          providerName = 'Backblaze B2';
+        } else if (process.env.AWS_ENDPOINT.includes('cloudflare') || process.env.AWS_ENDPOINT.includes('r2')) {
+          providerName = 'Cloudflare R2';
+        }
+      }
+
       statuses[key] = {
-        name: friendlyNames[key] || `Custom S3 (${key})`,
+        name: providerName,
         type: key,
         online: isOnline,
         latency: isOnline ? latency : 0,
