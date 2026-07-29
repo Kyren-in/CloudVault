@@ -2,18 +2,21 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, List
 import { StorageProvider } from './provider.js';
 
 export class S3StorageProvider extends StorageProvider {
-  constructor() {
-    super('aws');
-    this.region = process.env.AWS_REGION || 'us-east-1';
+  constructor(name = 'aws', config = {}) {
+    super(name);
+    this.region = config.region || process.env.AWS_REGION || 'us-east-1';
+    const accessKeyId = config.accessKeyId || process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = config.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY;
+    const endpoint = config.endpoint || process.env.AWS_ENDPOINT;
     
     // Initialize if keys are present
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    if (accessKeyId && secretAccessKey) {
       this.client = new S3Client({
         region: this.region,
-        endpoint: process.env.AWS_ENDPOINT || undefined, // Support custom endpoints (Backblaze B2, Cloudflare R2)
+        endpoint: endpoint || undefined, // Support custom endpoints (Backblaze B2, Cloudflare R2, Supabase)
         credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+          accessKeyId,
+          secretAccessKey
         }
       });
       this.enabled = true;

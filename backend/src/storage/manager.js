@@ -29,8 +29,22 @@ class StorageManager {
       const s3 = new S3StorageProvider();
       this.providers.aws = s3.enabled ? s3 : new LocalFileStorageProvider('aws');
 
+      // GCP node can be configured with standard GCS OR a second S3-compatible client (e.g. Supabase Storage / Cloudflare R2)
       const gcs = new GCSStorageProvider();
-      this.providers.gcp = gcs.enabled ? gcs : new LocalFileStorageProvider('gcp');
+      if (gcs.enabled) {
+        this.providers.gcp = gcs;
+      } else if (process.env.GCP_S3_ACCESS_KEY_ID && process.env.GCP_S3_SECRET_ACCESS_KEY) {
+        console.log('Injecting S3-compatible client for GCP node...');
+        const secondaryS3 = new S3StorageProvider('gcp', {
+          region: process.env.GCP_S3_REGION || 'us-east-1',
+          endpoint: process.env.GCP_S3_ENDPOINT,
+          accessKeyId: process.env.GCP_S3_ACCESS_KEY_ID,
+          secretAccessKey: process.env.GCP_S3_SECRET_ACCESS_KEY
+        });
+        this.providers.gcp = secondaryS3.enabled ? secondaryS3 : new LocalFileStorageProvider('gcp');
+      } else {
+        this.providers.gcp = new LocalFileStorageProvider('gcp');
+      }
     }
   }
 
