@@ -10,6 +10,7 @@ export class S3StorageProvider extends StorageProvider {
     if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
       this.client = new S3Client({
         region: this.region,
+        endpoint: process.env.AWS_ENDPOINT || undefined, // Support custom endpoints (Backblaze B2, Cloudflare R2)
         credentials: {
           accessKeyId: process.env.AWS_ACCESS_KEY_ID,
           secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY

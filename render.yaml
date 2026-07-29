@@ -25,6 +25,9 @@ services:
         sync: false
       - key: AWS_REGION
         value: us-east-1
+      - key: AWS_ENDPOINT
+        sync: false
+        placeholder: "Optional: Set for Backblaze B2 (e.g., https://s3.us-west-004.backblazeb2.com)"
       - key: GCP_PROJECT_ID
         sync: false
       - key: GCP_CLIENT_EMAIL
