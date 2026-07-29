@@ -1,0 +1,43 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  files     File[]
+}
+
+model File {
+  id            String   @id @default(uuid())
+  userId        String
+  filename      String
+  size          Int      // Original uncompressed size
+  hash          String   // Original file SHA-256 hash
+  encrypted     Boolean  @default(true)
+  compression   String   @default("gzip") // "gzip" or "none"
+  encryptionKey String   // Hex key generated for this file
+  iv            String   // Hex IV used for GCM encryption
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chunks        Chunk[]
+}
+
+model Chunk {
+  id          String @id @default(uuid())
+  fileId      String
+  chunkNumber Int
+  provider    String // "aws", "gcp", "local"
+  bucket      String
+  path        String
+  hash        String // SHA-256 of the processed chunk
+  size        Int    // Processed chunk size
+  file        File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+}

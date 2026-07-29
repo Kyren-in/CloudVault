@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: cloudvault-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: DATABASE_URL
+        sync: false
+        placeholder: "postgresql://postgres.[YOUR_PROJECT_REF]:[YOUR_PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: USE_MOCK_STORAGE
+        value: "false"
+      - key: CLOUD_BUCKET_NAME
+        sync: false
+        placeholder: "Name of your AWS and GCP buckets"
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-1
+      - key: GCP_PROJECT_ID
+        sync: false
+      - key: GCP_CLIENT_EMAIL
+        sync: false
+      - key: GCP_PRIVATE_KEY
+        sync: false
+      - key: NODE_OPTIONS
+        value: "--dns-result-order=ipv4first"

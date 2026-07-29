@@ -1,0 +1,11 @@
+{
+  "name": "cloudvault-root",
+  "version": "1.0.0",
+  "description": "Multi-cloud distributed file storage system",
+  "scripts": {
+    "install-all": "npm.cmd install --prefix backend && npm.cmd install --prefix frontend",
+    "backend": "npm.cmd run dev --prefix backend",
+    "frontend": "npm.cmd run dev --prefix frontend",
+    "dev": "npm.cmd install -g concurrently && concurrently \"npm.cmd run dev --prefix backend\" \"npm.cmd run dev --prefix frontend\""
+  }
+}

@@ -1,0 +1,22 @@
+# Dependency directories
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database files
+*.db
+*.db-journal
+
+# Local storage mock folder (contains your test file uploads)
+local_storage/
+
+# Production build outputs
+dist/
+build/
+
+# Operating system files
+.DS_Store
+Thumbs.db
