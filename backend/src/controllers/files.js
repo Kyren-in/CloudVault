@@ -187,15 +187,22 @@ export async function getStorageStats(req, res) {
 
     let totalOriginalSize = 0;
     let totalCloudSize = 0;
-    let awsChunksCount = 0;
-    let gcpChunksCount = 0;
+    
+    // Initialize chunk distribution counters dynamically for all active providers
+    const distribution = {};
+    for (const key of Object.keys(storageManager.providers)) {
+      distribution[key] = 0;
+    }
 
     for (const file of files) {
       totalOriginalSize += file.size;
       for (const chunk of file.chunks) {
         totalCloudSize += chunk.size;
-        if (chunk.provider === 'aws') awsChunksCount++;
-        if (chunk.provider === 'gcp') gcpChunksCount++;
+        if (distribution[chunk.provider] !== undefined) {
+          distribution[chunk.provider]++;
+        } else {
+          distribution[chunk.provider] = 1;
+        }
       }
     }
 
@@ -208,10 +215,7 @@ export async function getStorageStats(req, res) {
         cloudBytes: totalCloudSize,
         savingsBytes: Math.max(0, totalOriginalSize - totalCloudSize)
       },
-      distribution: {
-        awsChunks: awsChunksCount,
-        gcpChunks: gcpChunksCount
-      },
+      distribution,
       providers: providerStatus
     });
   } catch (err) {
@@ -225,21 +229,23 @@ export async function getStorageStats(req, res) {
  */
 export async function toggleProviderHealth(req, res) {
   try {
-    const { provider } = req.body; // 'aws' or 'gcp'
+    const { provider } = req.body;
     
-    if (provider !== 'aws' && provider !== 'gcp') {
-      return res.status(400).json({ error: "Provider must be 'aws' or 'gcp'" });
+    if (!storageManager.providers[provider]) {
+      return res.status(400).json({ error: `Provider '${provider}' is not configured.` });
     }
 
     if (simulatedHealthStatus[provider]) {
       simulatedHealthStatus[provider].online = !simulatedHealthStatus[provider].online;
     } else {
-      simulatedHealthStatus[provider] = { online: false, latency: 100 };
+      // Default to starting as offline (and toggle it)
+      const currentHealth = await storageManager.providers[provider].checkHealth();
+      simulatedHealthStatus[provider] = { online: !currentHealth, latency: 80 };
     }
 
     const currentStatus = await storageManager.getProvidersStatus();
     res.json({
-      message: `Simulated state for ${provider.toUpperCase()} toggled to ${simulatedHealthStatus[provider].online ? 'ONLINE' : 'OFFLINE'}.`,
+      message: `Simulated state for ${provider.toUpperCase()} toggled.`,
       providers: currentStatus
     });
   } catch (err) {

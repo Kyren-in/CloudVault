@@ -20,29 +20,65 @@ class StorageManager {
     const useMock = process.env.USE_MOCK_STORAGE !== 'false';
 
     if (useMock) {
-      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode.');
+      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 5 simulated clouds.');
       this.providers.aws = new LocalFileStorageProvider('aws');
       this.providers.gcp = new LocalFileStorageProvider('gcp');
+      this.providers.backblaze = new LocalFileStorageProvider('backblaze');
+      this.providers.cloudflare = new LocalFileStorageProvider('cloudflare');
+      this.providers.supabase = new LocalFileStorageProvider('supabase');
     } else {
       console.log('CloudVault is running in PRODUCTION CLOUD STORAGE mode.');
       
-      const s3 = new S3StorageProvider();
-      this.providers.aws = s3.enabled ? s3 : new LocalFileStorageProvider('aws');
-
-      // GCP node can be configured with standard GCS OR a second S3-compatible client (e.g. Supabase Storage / Cloudflare R2)
+      // 1. AWS S3
+      if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        this.providers.aws = new S3StorageProvider('aws', {
+          region: process.env.AWS_REGION,
+          endpoint: process.env.AWS_ENDPOINT,
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        });
+      }
+      
+      // 2. Google Cloud Storage
       const gcs = new GCSStorageProvider();
       if (gcs.enabled) {
         this.providers.gcp = gcs;
-      } else if (process.env.GCP_S3_ACCESS_KEY_ID && process.env.GCP_S3_SECRET_ACCESS_KEY) {
-        console.log('Injecting S3-compatible client for GCP node...');
-        const secondaryS3 = new S3StorageProvider('gcp', {
-          region: process.env.GCP_S3_REGION || 'us-east-1',
-          endpoint: process.env.GCP_S3_ENDPOINT,
-          accessKeyId: process.env.GCP_S3_ACCESS_KEY_ID,
-          secretAccessKey: process.env.GCP_S3_SECRET_ACCESS_KEY
+      }
+      
+      // 3. Backblaze B2 (S3 adapter)
+      if (process.env.BACKBLAZE_ACCESS_KEY_ID && process.env.BACKBLAZE_SECRET_ACCESS_KEY) {
+        this.providers.backblaze = new S3StorageProvider('backblaze', {
+          region: process.env.BACKBLAZE_REGION,
+          endpoint: process.env.BACKBLAZE_ENDPOINT,
+          accessKeyId: process.env.BACKBLAZE_ACCESS_KEY_ID,
+          secretAccessKey: process.env.BACKBLAZE_SECRET_ACCESS_KEY
         });
-        this.providers.gcp = secondaryS3.enabled ? secondaryS3 : new LocalFileStorageProvider('gcp');
-      } else {
+      }
+
+      // 4. Cloudflare R2 (S3 adapter)
+      if (process.env.CLOUDFLARE_ACCESS_KEY_ID && process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
+        this.providers.cloudflare = new S3StorageProvider('cloudflare', {
+          region: process.env.CLOUDFLARE_REGION || 'auto',
+          endpoint: process.env.CLOUDFLARE_ENDPOINT,
+          accessKeyId: process.env.CLOUDFLARE_ACCESS_KEY_ID,
+          secretAccessKey: process.env.CLOUDFLARE_SECRET_ACCESS_KEY
+        });
+      }
+
+      // 5. Supabase Storage (S3 adapter)
+      if (process.env.SUPABASE_ACCESS_KEY_ID && process.env.SUPABASE_SECRET_ACCESS_KEY) {
+        this.providers.supabase = new S3StorageProvider('supabase', {
+          region: process.env.SUPABASE_REGION || 'ap-southeast-1',
+          endpoint: process.env.SUPABASE_ENDPOINT,
+          accessKeyId: process.env.SUPABASE_ACCESS_KEY_ID,
+          secretAccessKey: process.env.SUPABASE_SECRET_ACCESS_KEY
+        });
+      }
+
+      // Fallback: if absolutely nothing is configured, provision AWS & GCP local mocks so server starts
+      if (Object.keys(this.providers).length === 0) {
+        console.log('No cloud credentials provided. Initializing local mock folders as fallback.');
+        this.providers.aws = new LocalFileStorageProvider('aws');
         this.providers.gcp = new LocalFileStorageProvider('gcp');
       }
     }
@@ -53,6 +89,14 @@ class StorageManager {
    */
   async getProvidersStatus() {
     const statuses = {};
+    const friendlyNames = {
+      aws: 'AWS S3',
+      gcp: 'Google Cloud Storage',
+      backblaze: 'Backblaze B2',
+      cloudflare: 'Cloudflare R2',
+      supabase: 'Supabase Storage'
+    };
+
     for (const [key, provider] of Object.entries(this.providers)) {
       const isOnline = await provider.checkHealth();
       
@@ -62,12 +106,16 @@ class StorageManager {
         latency = provider.getLatency();
       } else {
         const start = Date.now();
-        await provider.checkHealth();
-        latency = Date.now() - start;
+        try {
+          await provider.checkHealth();
+          latency = Date.now() - start;
+        } catch {
+          latency = 0;
+        }
       }
 
       statuses[key] = {
-        name: key === 'aws' ? 'AWS S3' : 'Google Cloud Storage',
+        name: friendlyNames[key] || `Custom S3 (${key})`,
         type: key,
         online: isOnline,
         latency: isOnline ? latency : 0,
@@ -95,45 +143,39 @@ class StorageManager {
     const { encryptedBuffer, iv } = cryptoService.encrypt(compressed, fileKey);
     const encryptedSize = encryptedBuffer.length;
 
-    // Check which providers are online
-    const awsOnline = await this.providers.aws.checkHealth();
-    const gcpOnline = await this.providers.gcp.checkHealth();
+    // Check which providers are online dynamically
+    const onlineProviders = {};
+    for (const [key, provider] of Object.entries(this.providers)) {
+      const isOnline = await provider.checkHealth();
+      if (isOnline) {
+        onlineProviders[key] = provider;
+      }
+    }
 
-    if (!awsOnline && !gcpOnline) {
+    const activeKeys = Object.keys(onlineProviders);
+    if (activeKeys.length === 0) {
       throw new Error('All storage providers are currently offline. Cannot complete upload.');
     }
 
-    const bucketName = process.env.CLOUD_BUCKET_NAME || 'cloudvault-bucket';
     const chunkRecords = [];
 
     // Decide strategy based on size
     if (encryptedSize < CHUNK_THRESHOLD_BYTES) {
-      // SMALL FILE STRATEGY: Replicate full file to both providers
-      console.log(`Uploading ${filename} (<${CHUNK_THRESHOLD_MB}MB) using replication strategy.`);
+      // SMALL FILE STRATEGY: Replicate full file to ALL online providers
+      console.log(`Uploading ${filename} (<${CHUNK_THRESHOLD_MB}MB) using replication strategy across ${activeKeys.length} providers.`);
       const chunkPath = `files/${originalHash}/full.enc`;
       
       const uploadPromises = [];
       
-      if (awsOnline) {
+      for (const key of activeKeys) {
+        const provider = onlineProviders[key];
+        const bucketName = this.getProviderBucket(key);
+        
         uploadPromises.push((async () => {
-          await this.providers.aws.uploadChunk(bucketName, chunkPath, encryptedBuffer);
+          await provider.uploadChunk(bucketName, chunkPath, encryptedBuffer);
           chunkRecords.push({
             chunkNumber: 1,
-            provider: 'aws',
-            bucket: bucketName,
-            path: chunkPath,
-            hash: cryptoService.calculateHash(encryptedBuffer),
-            size: encryptedSize
-          });
-        })());
-      }
-      
-      if (gcpOnline) {
-        uploadPromises.push((async () => {
-          await this.providers.gcp.uploadChunk(bucketName, chunkPath, encryptedBuffer);
-          chunkRecords.push({
-            chunkNumber: 1,
-            provider: 'gcp',
+            provider: key,
             bucket: bucketName,
             path: chunkPath,
             hash: cryptoService.calculateHash(encryptedBuffer),
@@ -144,14 +186,10 @@ class StorageManager {
 
       await Promise.all(uploadPromises);
     } else {
-      // LARGE FILE STRATEGY: Distribute chunks round-robin
-      console.log(`Uploading ${filename} (>=${CHUNK_THRESHOLD_MB}MB) using chunked distribution strategy.`);
+      // LARGE FILE STRATEGY: Distribute chunks round-robin across all online providers
+      console.log(`Uploading ${filename} (>=${CHUNK_THRESHOLD_MB}MB) using chunked distribution strategy across ${activeKeys.length} providers.`);
       
       const numChunks = Math.ceil(encryptedSize / CHUNK_SIZE_BYTES);
-      const activeProviders = [];
-      if (awsOnline) activeProviders.push('aws');
-      if (gcpOnline) activeProviders.push('gcp');
-
       const chunkUploadPromises = [];
 
       for (let i = 0; i < numChunks; i++) {
@@ -163,8 +201,9 @@ class StorageManager {
         const chunkPath = `files/${originalHash}/chunk_${chunkNumber}.enc`;
 
         // Round robin selection among active providers
-        const providerName = activeProviders[i % activeProviders.length];
-        const provider = this.providers[providerName];
+        const providerName = activeKeys[i % activeKeys.length];
+        const provider = onlineProviders[providerName];
+        const bucketName = this.getProviderBucket(providerName);
 
         chunkUploadPromises.push((async () => {
           await provider.uploadChunk(bucketName, chunkPath, chunkBuffer);
@@ -195,6 +234,14 @@ class StorageManager {
   }
 
   /**
+   * Resolves the configured bucket name for a specific provider
+   */
+  getProviderBucket(providerName) {
+    const key = providerName.toUpperCase();
+    return process.env[`${key}_BUCKET_NAME`] || process.env.CLOUD_BUCKET_NAME || 'cloudvault-bucket';
+  }
+
+  /**
    * Downloads a file: retrieves chunks, merges them, decrypts, and decompresses.
    * Handles failover automatically if a provider is offline for replicated files.
    * @param {object} fileMetadata - File metadata from DB including relations to chunks.
@@ -218,9 +265,11 @@ class StorageManager {
     const downloadedChunkBuffers = [];
     const totalChunkNumbers = Object.keys(chunkGroups).length;
 
-    // Check online status of providers
-    const awsOnline = await this.providers.aws.checkHealth();
-    const gcpOnline = await this.providers.gcp.checkHealth();
+    // Check online status of configured providers dynamically
+    const providerHealth = {};
+    for (const key of Object.keys(this.providers)) {
+      providerHealth[key] = await this.providers[key].checkHealth();
+    }
 
     for (let chunkNumber = 1; chunkNumber <= totalChunkNumbers; chunkNumber++) {
       const replicas = chunkGroups[chunkNumber];
@@ -234,8 +283,8 @@ class StorageManager {
       // Try downloading from the replicas. Try online providers first.
       // Sort replicas: place online providers first
       const sortedReplicas = [...replicas].sort((a, b) => {
-        const aOnline = a.provider === 'aws' ? awsOnline : gcpOnline;
-        const bOnline = b.provider === 'aws' ? awsOnline : gcpOnline;
+        const aOnline = providerHealth[a.provider] || false;
+        const bOnline = providerHealth[b.provider] || false;
         return bOnline - aOnline; // true (1) before false (0)
       });
 

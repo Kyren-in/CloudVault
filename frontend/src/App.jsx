@@ -460,11 +460,18 @@ export default function App() {
     );
   }
 
-  // Calculate percentages
+  // Calculate percentages dynamically based on registered providers
   const cloudUsed = stats.storageUsed.cloudBytes;
-  // Free tier total: AWS (5GB) + GCP (5GB) = 10GB
-  const totalFreeTier = 10 * 1024 * 1024 * 1024;
-  const usedPercent = Math.min(100, (cloudUsed / totalFreeTier) * 100);
+  const getProviderQuota = (key) => {
+    if (key === 'aws') return 5 * 1024 * 1024 * 1024;
+    if (key === 'gcp') return 5 * 1024 * 1024 * 1024;
+    if (key === 'backblaze') return 10 * 1024 * 1024 * 1024;
+    if (key === 'cloudflare') return 10 * 1024 * 1024 * 1024;
+    if (key === 'supabase') return 1 * 1024 * 1024 * 1024;
+    return 5 * 1024 * 1024 * 1024;
+  };
+  const totalFreeTier = Object.keys(stats.providers).reduce((sum, key) => sum + getProviderQuota(key), 0) || (10 * 1024 * 1024 * 1024);
+  const usedPercent = totalFreeTier > 0 ? Math.min(100, (cloudUsed / totalFreeTier) * 100) : 0;
 
   return (
     <div className="min-h-screen relative flex flex-col">
@@ -556,7 +563,7 @@ export default function App() {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-400">Multi-Cloud Quota Limit</span>
-                  <span className="font-medium text-slate-400">10.0 GB (Free Tiers)</span>
+                  <span className="font-medium text-slate-400">{(totalFreeTier / (1024 * 1024 * 1024)).toFixed(1)} GB (Free Tiers)</span>
                 </div>
               </div>
             </div>
@@ -611,7 +618,7 @@ export default function App() {
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-slate-400">Replica Chunks:</span>
                     <span className="font-bold text-sky-400">
-                      {key === 'aws' ? stats.distribution.awsChunks : stats.distribution.gcpChunks} chunks
+                      {stats.distribution[key] || 0} chunks
                     </span>
                   </div>
                 </div>
@@ -692,8 +699,14 @@ export default function App() {
                   <tbody className="divide-y divide-slate-850">
                     {files.map(file => {
                       const isLarge = file.size >= (10 * 1024 * 1024);
-                      const awsCount = file.chunks.filter(c => c.provider === 'aws').length;
-                      const gcpCount = file.chunks.filter(c => c.provider === 'gcp').length;
+                      const fileProviders = [...new Set(file.chunks.map(c => c.provider))];
+                      const friendlyNames = {
+                        aws: 'AWS',
+                        gcp: 'GCP',
+                        backblaze: 'B2',
+                        cloudflare: 'R2',
+                        supabase: 'Supa'
+                      };
                       
                       return (
                         <tr key={file.id} className="hover:bg-slate-900/40 transition-colors">
@@ -714,16 +727,19 @@ export default function App() {
                               </div>
                             </div>
                           </td>
-
+ 
                           <td className="py-3.5">
                             {!isLarge ? (
                               <div className="flex flex-col gap-1">
                                 <span className="font-semibold text-emerald-400 text-[10px] bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full w-max">
-                                  REPLICATED 2X
+                                  REPLICATED {fileProviders.length}X
                                 </span>
-                                <div className="flex gap-1.5 items-center mt-1 pl-1">
-                                  <span className="text-[9px] text-sky-400 border border-sky-400/20 px-1 rounded">AWS</span>
-                                  <span className="text-[9px] text-violet-400 border border-violet-400/20 px-1 rounded">GCP</span>
+                                <div className="flex gap-1.5 items-center mt-1 pl-1 flex-wrap">
+                                  {fileProviders.map(p => (
+                                    <span key={p} className="text-[9px] text-sky-400 border border-sky-400/20 px-1 rounded uppercase">
+                                      {friendlyNames[p] || p}
+                                    </span>
+                                  ))}
                                 </div>
                               </div>
                             ) : (
@@ -731,8 +747,15 @@ export default function App() {
                                 <span className="font-semibold text-violet-400 text-[10px] bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded-full w-max">
                                   DISTRIBUTED CHUNKS
                                 </span>
-                                <div className="flex gap-1.5 items-center mt-1 text-[9px] text-slate-400 pl-1">
-                                  <span>{file.chunks.length} blocks ({awsCount}x AWS, {gcpCount}x GCP)</span>
+                                <div className="flex gap-1.5 items-center mt-1 text-[9px] text-slate-400 pl-1 flex-wrap">
+                                  <span>
+                                    {file.chunks.length} blocks ({
+                                      fileProviders.map(p => {
+                                        const count = file.chunks.filter(c => c.provider === p).length;
+                                        return `${count}x ${friendlyNames[p] || p.toUpperCase()}`;
+                                      }).join(', ')
+                                    })
+                                  </span>
                                 </div>
                               </div>
                             )}
