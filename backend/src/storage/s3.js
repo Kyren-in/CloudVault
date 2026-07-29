@@ -14,6 +14,7 @@ export class S3StorageProvider extends StorageProvider {
       this.client = new S3Client({
         region: this.region,
         endpoint: endpoint || undefined, // Support custom endpoints (Backblaze B2, Cloudflare R2, Supabase)
+        forcePathStyle: true,
         credentials: {
           accessKeyId,
           secretAccessKey
