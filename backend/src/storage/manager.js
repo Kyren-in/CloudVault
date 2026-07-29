@@ -99,7 +99,7 @@ class StorageManager {
       supabase: 'Supabase Storage'
     };
 
-    for (const [key, provider] of Object.entries(this.providers)) {
+    const statusPromises = Object.entries(this.providers).map(async ([key, provider]) => {
       const isOnline = await provider.checkHealth();
       
       // Determine latency (mock is simulated, real can measure request duration)
@@ -132,7 +132,9 @@ class StorageManager {
         latency: isOnline ? latency : 0,
         isMock: provider instanceof LocalFileStorageProvider
       };
-    }
+    });
+
+    await Promise.all(statusPromises);
     return statuses;
   }
 
@@ -154,14 +156,15 @@ class StorageManager {
     const { encryptedBuffer, iv } = cryptoService.encrypt(compressed, fileKey);
     const encryptedSize = encryptedBuffer.length;
 
-    // Check which providers are online dynamically
+    // Check which providers are online dynamically in parallel
     const onlineProviders = {};
-    for (const [key, provider] of Object.entries(this.providers)) {
+    const checkPromises = Object.entries(this.providers).map(async ([key, provider]) => {
       const isOnline = await provider.checkHealth();
       if (isOnline) {
         onlineProviders[key] = provider;
       }
-    }
+    });
+    await Promise.all(checkPromises);
 
     const activeKeys = Object.keys(onlineProviders);
     if (activeKeys.length === 0) {

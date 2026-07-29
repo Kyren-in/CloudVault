@@ -10,42 +10,24 @@ const b2Config = {
   }
 };
 
-const supabaseConfig = {
-  region: 'ap-southeast-1',
-  endpoint: 'https://fwovsuwobzmhuwgzrngp.supabase.co/storage/v1/s3',
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: '538cf564c13508d867001dd206135fc9',
-    secretAccessKey: '7d0a2e04fe6bbad9124b32b06bf86a20fe908fd6bd3ad131a607e2c68a35e42b'
-  }
-};
-
-async function testProvider(name, config, bucketName) {
-  console.log(`\n======================================`);
-  console.log(`Testing connection for: ${name}`);
-  console.log(`Endpoint: ${config.endpoint}`);
-  console.log(`Bucket: ${bucketName}`);
+async function run() {
+  console.log(`======================================`);
+  console.log(`Testing Backblaze B2 Connection`);
+  console.log(`Bucket: cloudvault-b2-kyren`);
   console.log(`======================================`);
   
+  const client = new S3Client(b2Config);
   try {
-    const client = new S3Client(config);
-    const command = new ListObjectsV2Command({
-      Bucket: bucketName,
+    const cmd = new ListObjectsV2Command({
+      Bucket: 'cloudvault-b2-kyren',
       MaxKeys: 1
     });
-    
-    const response = await client.send(command);
-    console.log(`✅ Success! Connection verified.`);
+    const response = await client.send(cmd);
+    console.log(`✅ Success! Backblaze B2 connected successfully to "cloudvault-b2-kyren"!`);
     console.log(`Found objects:`, response.Contents ? response.Contents.length : 0);
   } catch (err) {
-    console.error(`❌ Failed connecting to ${name}:`, err.message);
-    console.error(`Error Code:`, err.code || err.$metadata?.httpStatusCode);
+    console.error(`❌ Failed:`, err.message);
   }
-}
-
-async function run() {
-  await testProvider('Backblaze B2', b2Config, 'cloudvault');
-  await testProvider('Supabase Storage', supabaseConfig, 'cloudvault');
 }
 
 run();
