@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Cloud, Lock, Shield, HardDrive, RefreshCw, FileText, Trash2, 
   Download, UploadCloud, LogOut, CheckCircle2, AlertTriangle, 
-  Activity, Terminal, User, Server, Database, Key, Check, Info
+  Activity, Terminal, User, Server, Database, Key, Check, Info,
+  Eye, EyeOff
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
@@ -10,14 +11,64 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('cv_token') || '');
   const [user, setUser] = useState(JSON.parse(localStorage.getItem('cv_user')) || null);
-  const [isLogin, setIsLogin] = useState(true);
+  const [authState, setAuthState] = useState('login'); // 'login' | 'signup' | 'forgot' | 'reset'
   
   // Auth Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [resetToken, setResetToken] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+
+  // Mouse cursor spotlight tracking
+  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
+  const [isCursorHovered, setIsCursorHovered] = useState(false);
+
+  // Load reset token from url params on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tokenFromUrl = params.get('resetToken');
+    if (tokenFromUrl) {
+      setResetToken(tokenFromUrl);
+      setAuthState('reset');
+      addLog('Password reset link detected. Reset form loaded.');
+    }
+  }, []);
+
+  // Track global mouse move for spotlight & cursor trail
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleMouseOver = (e) => {
+      const target = e.target;
+      if (
+        target.tagName === 'BUTTON' ||
+        target.tagName === 'A' ||
+        target.closest('button') ||
+        target.closest('a') ||
+        target.tagName === 'INPUT' ||
+        target.closest('.cursor-pointer') ||
+        target.classList.contains('cursor-pointer')
+      ) {
+        setIsCursorHovered(true);
+      } else {
+        setIsCursorHovered(false);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseover', handleMouseOver);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseover', handleMouseOver);
+    };
+  }, []);
 
   // Files & Stats State
   const [files, setFiles] = useState([]);
@@ -93,10 +144,23 @@ export default function App() {
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     setAuthLoading(true);
 
-    const endpoint = isLogin ? 'login' : 'signup';
-    const payload = isLogin ? { email, password } : { name, email, password };
+    let endpoint = authState;
+    let payload = {};
+
+    if (authState === 'login') {
+      payload = { email, password };
+    } else if (authState === 'signup') {
+      payload = { name, email, password };
+    } else if (authState === 'forgot') {
+      endpoint = 'forgot-password';
+      payload = { email };
+    } else if (authState === 'reset') {
+      endpoint = 'reset-password';
+      payload = { token: resetToken, newPassword };
+    }
 
     try {
       const res = await fetch(`${API_BASE}/${endpoint}`, {
@@ -110,15 +174,29 @@ export default function App() {
         throw new Error(data.error || 'Authentication failed.');
       }
 
-      localStorage.setItem('cv_token', data.token);
-      localStorage.setItem('cv_user', JSON.stringify(data.user));
-      setToken(data.token);
-      setUser(data.user);
-      
-      // Clear forms
-      setName('');
-      setEmail('');
-      setPassword('');
+      if (authState === 'forgot') {
+        setAuthSuccess(data.message);
+        if (data.resetToken) {
+          setResetToken(data.resetToken);
+          addLog(`Dev reset token captured: ${data.resetToken.substring(0, 10)}...`, 'success');
+        }
+      } else if (authState === 'reset') {
+        setAuthSuccess(data.message);
+        setTimeout(() => {
+          setAuthState('login');
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }, 2000);
+      } else {
+        localStorage.setItem('cv_token', data.token);
+        localStorage.setItem('cv_user', JSON.stringify(data.user));
+        setToken(data.token);
+        setUser(data.user);
+        
+        // Clear forms
+        setName('');
+        setEmail('');
+        setPassword('');
+      }
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -367,13 +445,29 @@ export default function App() {
   if (!token) {
     return (
       <div className="min-h-screen flex items-center justify-center relative px-4 overflow-hidden">
-        {/* Glow Effects */}
+        {/* Glow Spots */}
         <div className="glow-spot-blue -top-20 -left-20"></div>
         <div className="glow-spot-purple -bottom-20 -right-20"></div>
 
-        <div className="w-full max-w-md glass-panel rounded-2xl border border-slate-800 p-8 shadow-2xl z-10">
+        {/* Mouse follow background spotlight */}
+        <div 
+          className="pointer-events-none fixed z-0 w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.05)_0,rgba(139,92,246,0.03)_50%,transparent_100%)] -translate-x-1/2 -translate-y-1/2 blur-2xl hidden md:block"
+          style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+        />
+
+        {/* Custom cursor followers */}
+        <div 
+          className={`pointer-events-none fixed z-50 rounded-full border border-sky-400/40 -translate-x-1/2 -translate-y-1/2 transition-all duration-150 ease-out hidden md:block ${isCursorHovered ? 'w-12 h-12 bg-sky-400/10 border-sky-400/80' : 'w-6 h-6'}`}
+          style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+        />
+        <div 
+          className="pointer-events-none fixed z-50 w-1.5 h-1.5 rounded-full bg-sky-400 -translate-x-1/2 -translate-y-1/2 hidden md:block"
+          style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+        />
+
+        <div className="w-full max-w-md glass-panel rounded-2xl p-8 shadow-2xl z-10 transition-all duration-300">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-tr from-sky-400 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/10 mb-4 animate-pulse-glow">
+            <div className="w-16 h-16 bg-gradient-to-tr from-sky-400 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/10 mb-4 animate-pulse">
               <Cloud className="w-9 h-9 text-slate-900" strokeWidth={2.5} />
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-white">CloudVault</h1>
@@ -381,7 +475,7 @@ export default function App() {
           </div>
 
           <form onSubmit={handleAuthSubmit} className="space-y-5">
-            {!isLogin && (
+            {authState === 'signup' && (
               <div>
                 <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Full Name</label>
                 <div className="relative">
@@ -398,35 +492,102 @@ export default function App() {
               </div>
             )}
 
-            <div>
-              <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Email Address</label>
-              <div className="relative">
-                <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  className="w-full pl-10 pr-4 py-3 rounded-lg glass-input text-sm"
-                />
+            {(authState === 'login' || authState === 'signup' || authState === 'forgot') && (
+              <div>
+                <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Email Address</label>
+                <div className="relative">
+                  <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    className="w-full pl-10 pr-4 py-3 rounded-lg glass-input text-sm"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
-            <div>
-              <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-3 rounded-lg glass-input text-sm"
-                />
+            {authState === 'reset' && (
+              <>
+                <div>
+                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">Reset Token</label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      required
+                      value={resetToken}
+                      onChange={e => setResetToken(e.target.value)}
+                      placeholder="Paste reset token here"
+                      className="w-full pl-10 pr-4 py-3 rounded-lg glass-input text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider mb-2">New Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full pl-10 pr-10 py-3 rounded-lg glass-input text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 focus:outline-none"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {(authState === 'login' || authState === 'signup') && (
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-slate-300 text-xs font-semibold uppercase tracking-wider">Password</label>
+                  {authState === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthState('forgot');
+                        setAuthError('');
+                        setAuthSuccess('');
+                      }}
+                      className="text-xs text-sky-400 hover:text-sky-300 transition-colors font-medium"
+                    >
+                      Forgot?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-10 py-3 rounded-lg glass-input text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 focus:outline-none"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
             {authError && (
               <div className="flex items-center gap-2 bg-red-950/40 border border-red-500/30 text-red-300 rounded-lg p-3 text-xs">
@@ -435,24 +596,49 @@ export default function App() {
               </div>
             )}
 
+            {authSuccess && (
+              <div className="flex items-center gap-2 bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 rounded-lg p-3 text-xs">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{authSuccess}</span>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={authLoading}
               className="w-full py-3 bg-gradient-to-r from-sky-400 to-violet-500 hover:from-sky-500 hover:to-violet-600 active:scale-[0.98] text-slate-950 font-bold rounded-lg text-sm transition-all duration-150 shadow-lg shadow-sky-400/20 disabled:opacity-50"
             >
-              {authLoading ? 'Authenticating...' : isLogin ? 'Sign In to Vault' : 'Create Vault Account'}
+              {authLoading ? 'Processing...' : 
+               authState === 'login' ? 'Sign In to Vault' : 
+               authState === 'signup' ? 'Create Vault Account' :
+               authState === 'forgot' ? 'Send Reset Link' : 'Reset Password'}
             </button>
           </form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center space-y-3">
+            {authState === 'forgot' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthState('reset');
+                  setAuthError('');
+                  setAuthSuccess('');
+                }}
+                className="block w-full text-xs text-violet-400 hover:text-violet-300 transition-colors font-medium"
+              >
+                Already have a reset token? Enter here
+              </button>
+            )}
+            
             <button
               onClick={() => {
-                setIsLogin(!isLogin);
+                setAuthState(authState === 'login' ? 'signup' : 'login');
                 setAuthError('');
+                setAuthSuccess('');
               }}
               className="text-xs text-sky-400 hover:text-sky-300 transition-colors font-medium"
             >
-              {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
+              {authState === 'login' ? "Don't have an account? Sign up" : 'Return to Sign In'}
             </button>
           </div>
         </div>
@@ -468,13 +654,30 @@ export default function App() {
     if (key === 'backblaze') return 10 * 1024 * 1024 * 1024;
     if (key === 'cloudflare') return 10 * 1024 * 1024 * 1024;
     if (key === 'supabase') return 1 * 1024 * 1024 * 1024;
+    if (key === 'oracle') return 10 * 1024 * 1024 * 1024;
     return 5 * 1024 * 1024 * 1024;
   };
   const totalFreeTier = Object.keys(stats.providers).reduce((sum, key) => sum + getProviderQuota(key), 0) || (10 * 1024 * 1024 * 1024);
   const usedPercent = totalFreeTier > 0 ? Math.min(100, (cloudUsed / totalFreeTier) * 100) : 0;
 
   return (
-    <div className="min-h-screen relative flex flex-col">
+    <div className="min-h-screen relative flex flex-col overflow-hidden">
+      {/* Ambient Mouse Spotlight */}
+      <div 
+        className="pointer-events-none fixed z-0 w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle_at_center,rgba(56,189,248,0.05)_0,rgba(139,92,246,0.03)_50%,transparent_100%)] -translate-x-1/2 -translate-y-1/2 blur-2xl hidden md:block"
+        style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+      />
+
+      {/* Custom cursor followers */}
+      <div 
+        className={`pointer-events-none fixed z-50 rounded-full border border-sky-400/40 -translate-x-1/2 -translate-y-1/2 transition-all duration-150 ease-out hidden md:block ${isCursorHovered ? 'w-12 h-12 bg-sky-400/10 border-sky-400/80' : 'w-6 h-6'}`}
+        style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+      />
+      <div 
+        className="pointer-events-none fixed z-50 w-1.5 h-1.5 rounded-full bg-sky-400 -translate-x-1/2 -translate-y-1/2 hidden md:block"
+        style={{ left: `${mousePos.x}px`, top: `${mousePos.y}px` }}
+      />
+
       {/* Header */}
       <header className="glass-panel border-b border-slate-800/80 sticky top-0 z-40 w-full px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -705,7 +908,8 @@ export default function App() {
                         gcp: 'GCP',
                         backblaze: 'B2',
                         cloudflare: 'R2',
-                        supabase: 'Supa'
+                        supabase: 'Supa',
+                        oracle: 'OCI'
                       };
                       
                       return (

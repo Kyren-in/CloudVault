@@ -13,19 +13,54 @@ const CHUNK_SIZE_BYTES = CHUNK_SIZE_MB * 1024 * 1024;
 class StorageManager {
   constructor() {
     this.providers = {};
+    this.healthCache = {};
     this.initProviders();
+    this.startBackgroundHealthChecks();
+  }
+
+  startBackgroundHealthChecks() {
+    const checkAll = async () => {
+      const promises = Object.entries(this.providers).map(async ([key, provider]) => {
+        try {
+          if (provider instanceof LocalFileStorageProvider) {
+            const isOnline = await provider.checkHealth();
+            this.healthCache[key] = { online: isOnline, lastChecked: Date.now() };
+          } else {
+            const isOnline = await Promise.race([
+              provider.checkHealth(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Health check timeout')), 4000))
+            ]);
+            this.healthCache[key] = { online: !!isOnline, lastChecked: Date.now() };
+          }
+        } catch (err) {
+          console.error(`Background health check for ${key} failed:`, err.message);
+          this.healthCache[key] = { online: false, lastChecked: Date.now() };
+        }
+      });
+      await Promise.allSettled(promises);
+    };
+
+    // Run first check immediately
+    checkAll();
+    
+    // Check every 60 seconds
+    const interval = setInterval(checkAll, 60000);
+    if (interval.unref) {
+      interval.unref();
+    }
   }
 
   initProviders() {
     const useMock = process.env.USE_MOCK_STORAGE !== 'false';
 
     if (useMock) {
-      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 5 simulated clouds.');
+      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 6 simulated clouds.');
       this.providers.aws = new LocalFileStorageProvider('aws');
       this.providers.gcp = new LocalFileStorageProvider('gcp');
       this.providers.backblaze = new LocalFileStorageProvider('backblaze');
       this.providers.cloudflare = new LocalFileStorageProvider('cloudflare');
       this.providers.supabase = new LocalFileStorageProvider('supabase');
+      this.providers.oracle = new LocalFileStorageProvider('oracle');
     } else {
       console.log('CloudVault is running in PRODUCTION CLOUD STORAGE mode.');
       
@@ -77,6 +112,16 @@ class StorageManager {
         });
       }
 
+      // 6. Oracle Cloud Infrastructure Object Storage (S3 adapter)
+      if (process.env.ORACLE_ACCESS_KEY_ID && process.env.ORACLE_SECRET_ACCESS_KEY) {
+        this.providers.oracle = new S3StorageProvider('oracle', {
+          region: process.env.ORACLE_REGION || 'us-ashburn-1',
+          endpoint: process.env.ORACLE_ENDPOINT,
+          accessKeyId: process.env.ORACLE_ACCESS_KEY_ID,
+          secretAccessKey: process.env.ORACLE_SECRET_ACCESS_KEY
+        });
+      }
+
       // Fallback: if absolutely nothing is configured, provision AWS & GCP local mocks so server starts
       if (Object.keys(this.providers).length === 0) {
         console.log('No cloud credentials provided. Initializing local mock folders as fallback.');
@@ -86,9 +131,6 @@ class StorageManager {
     }
   }
 
-  /**
-   * Retrieves active providers and their health statuses
-   */
   async getProvidersStatus() {
     const statuses = {};
     const friendlyNames = {
@@ -96,11 +138,23 @@ class StorageManager {
       gcp: 'Google Cloud Storage',
       backblaze: 'Backblaze B2',
       cloudflare: 'Cloudflare R2',
-      supabase: 'Supabase Storage'
+      supabase: 'Supabase Storage',
+      oracle: 'Oracle Cloud Storage'
     };
 
     const statusPromises = Object.entries(this.providers).map(async ([key, provider]) => {
-      const isOnline = await provider.checkHealth();
+      let isOnline;
+      const cached = this.healthCache[key];
+
+      if (provider instanceof LocalFileStorageProvider) {
+        isOnline = await provider.checkHealth();
+        this.healthCache[key] = { online: isOnline, lastChecked: Date.now() };
+      } else if (cached && Date.now() - cached.lastChecked < 10000) {
+        isOnline = cached.online;
+      } else {
+        isOnline = await provider.checkHealth();
+        this.healthCache[key] = { online: isOnline, lastChecked: Date.now() };
+      }
       
       // Determine latency (mock is simulated, real can measure request duration)
       let latency = 50;
@@ -109,8 +163,13 @@ class StorageManager {
       } else {
         const start = Date.now();
         try {
-          await provider.checkHealth();
-          latency = Date.now() - start;
+          if (!cached || !cached.latency || Date.now() - cached.lastChecked >= 30000) {
+            await provider.checkHealth();
+            latency = Date.now() - start;
+            if (cached) cached.latency = latency;
+          } else {
+            latency = cached.latency || 100;
+          }
         } catch {
           latency = 0;
         }
@@ -148,23 +207,26 @@ class StorageManager {
     const originalSize = fileBuffer.length;
     const originalHash = cryptoService.calculateHash(fileBuffer);
 
-    // 1. Compress
-    const compressed = cryptoService.compress(fileBuffer, 'gzip');
+    // 1. Compress using Brotli
+    const compressed = cryptoService.compress(fileBuffer, 'brotli');
 
     // 2. Encrypt
     const fileKey = cryptoService.generateFileKey();
     const { encryptedBuffer, iv } = cryptoService.encrypt(compressed, fileKey);
     const encryptedSize = encryptedBuffer.length;
 
-    // Check which providers are online dynamically in parallel
+    // Check which providers are online dynamically via healthCache to avoid slow network checks
     const onlineProviders = {};
-    const checkPromises = Object.entries(this.providers).map(async ([key, provider]) => {
-      const isOnline = await provider.checkHealth();
+    for (const [key, provider] of Object.entries(this.providers)) {
+      const cached = this.healthCache[key];
+      const isOnline = provider instanceof LocalFileStorageProvider
+        ? await provider.checkHealth()
+        : (cached ? cached.online : true); // default to true if not cached yet
+      
       if (isOnline) {
         onlineProviders[key] = provider;
       }
-    });
-    await Promise.all(checkPromises);
+    }
 
     const activeKeys = Object.keys(onlineProviders);
     if (activeKeys.length === 0) {
@@ -240,7 +302,7 @@ class StorageManager {
       size: originalSize,
       hash: originalHash,
       encrypted: true,
-      compression: 'gzip',
+      compression: 'brotli',
       encryptionKey: fileKey,
       iv,
       chunks: chunkRecords
@@ -282,7 +344,11 @@ class StorageManager {
     // Check online status of configured providers dynamically
     const providerHealth = {};
     for (const key of Object.keys(this.providers)) {
-      providerHealth[key] = await this.providers[key].checkHealth();
+      const provider = this.providers[key];
+      const cached = this.healthCache[key];
+      providerHealth[key] = provider instanceof LocalFileStorageProvider
+        ? await provider.checkHealth()
+        : (cached ? cached.online : true); // default to true if not cached
     }
 
     for (let chunkNumber = 1; chunkNumber <= totalChunkNumbers; chunkNumber++) {
@@ -319,6 +385,11 @@ class StorageManager {
         } catch (err) {
           console.warn(`Failed to download chunk #${chunkNumber} from ${replica.provider}:`, err.message);
           lastError = err;
+          // Mark provider as offline in the health cache immediately on failure for self-healing
+          if (this.healthCache[replica.provider]) {
+            this.healthCache[replica.provider].online = false;
+            this.healthCache[replica.provider].lastChecked = Date.now();
+          }
         }
       }
 

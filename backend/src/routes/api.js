@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { signup, login } from '../controllers/auth.js';
+import { signup, login, forgotPassword, resetPassword } from '../controllers/auth.js';
 import { uploadFile, downloadFile, deleteFile, listFiles, getStorageStats, toggleProviderHealth } from '../controllers/files.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -17,6 +17,8 @@ const upload = multer({
 // Authentication routes
 router.post('/signup', signup);
 router.post('/login', login);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // File management routes (Token protected)
 router.post('/upload', authenticateToken, upload.single('file'), uploadFile);

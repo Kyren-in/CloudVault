@@ -16,9 +16,21 @@ export function calculateHash(buffer) {
 }
 
 /**
- * Compresses a buffer using GZIP.
+ * Compresses a buffer using Brotli (default) or GZIP.
  */
-export function compress(buffer, algorithm = 'gzip') {
+export function compress(buffer, algorithm = 'brotli') {
+  if (algorithm === 'brotli') {
+    try {
+      return zlib.brotliCompressSync(buffer, {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]: 9, // Level 9 is optimal trade-off of compression ratio vs CPU speed
+        }
+      });
+    } catch (err) {
+      console.warn('Brotli compression failed, falling back to gzip:', err.message);
+      return zlib.gzipSync(buffer);
+    }
+  }
   if (algorithm === 'gzip') {
     return zlib.gzipSync(buffer);
   }
@@ -26,9 +38,12 @@ export function compress(buffer, algorithm = 'gzip') {
 }
 
 /**
- * Decompresses a buffer using GZIP.
+ * Decompresses a buffer using GZIP or Brotli.
  */
-export function decompress(buffer, algorithm = 'gzip') {
+export function decompress(buffer, algorithm = 'brotli') {
+  if (algorithm === 'brotli') {
+    return zlib.brotliDecompressSync(buffer);
+  }
   if (algorithm === 'gzip') {
     return zlib.gunzipSync(buffer);
   }
