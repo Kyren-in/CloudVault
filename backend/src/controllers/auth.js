@@ -8,10 +8,27 @@ import path from 'path';
 const JWT_SECRET = process.env.JWT_SECRET || 'cloudvault-super-secret-key-12345';
 const AUDIT_LOG_PATH = path.join(process.cwd(), 'auth_audit.log');
 
-// HTML tag detector pattern to prevent injections (replaces silent cleaning with immediate rejection)
+// In-Memory storage for brute-force tracking (lightweight, zero external dependencies, thread-safe)
+const ipAttempts = new Map();      // IP -> { count, resetTime }
+const accountAttempts = new Map(); // Email -> { count, lockUntil }
+
+// HTML tag detector pattern to prevent injections
 const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i;
 
-// Audit logger for security monitoring
+// Email lockout notification simulation
+function sendLockoutEmail(email) {
+  console.log(`\n==================================================`);
+  console.log(`📧 [EMAIL SIMULATION] OUTBOUND EMAIL NOTIFICATION`);
+  console.log(`To: ${email}`);
+  console.log(`Subject: Security Alert: Your CloudVault account has been temporarily locked`);
+  console.log(`Body:`);
+  console.log(`  Security alert: Your CloudVault account has been temporarily locked`);
+  console.log(`  due to 6 consecutive failed login attempts.`);
+  console.log(`  The lock will automatically expire in 15 minutes.`);
+  console.log(`==================================================\n`);
+}
+
+// Helper to record audit failures
 function logAuditFailure(action, req, errorDetails, payload) {
   const timestamp = new Date().toISOString();
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -37,6 +54,55 @@ function logAuditFailure(action, req, errorDetails, payload) {
   } catch (err) {
     console.error('Failed to write to auth audit log file:', err);
   }
+}
+
+// IP rate limit validator (Layer 1)
+function checkIpRateLimit(ip) {
+  const now = Date.now();
+  let record = ipAttempts.get(ip);
+  
+  if (!record || now > record.resetTime) {
+    record = { count: 1, resetTime: now + 60 * 1000 };
+    ipAttempts.set(ip, record);
+    return true; // Safe
+  }
+
+  record.count += 1;
+  return record.count <= 30; // Limit at 30 attempts per minute
+}
+
+// Account lockout manager (Layer 2)
+function getAccountRecord(email) {
+  const key = email.toLowerCase();
+  let record = accountAttempts.get(key);
+  const now = Date.now();
+
+  if (!record) {
+    record = { count: 0, lockUntil: 0 };
+    accountAttempts.set(key, record);
+  }
+
+  // Clear expired lockouts
+  if (record.lockUntil && now > record.lockUntil) {
+    record.count = 0;
+    record.lockUntil = 0;
+  }
+
+  return record;
+}
+
+function recordAccountFailure(email) {
+  const record = getAccountRecord(email);
+  record.count += 1;
+  
+  if (record.count >= 6) {
+    record.lockUntil = Date.now() + 15 * 60 * 1000; // 15 mins lock
+    sendLockoutEmail(email.toLowerCase());
+  }
+}
+
+function recordAccountSuccess(email) {
+  accountAttempts.delete(email.toLowerCase());
 }
 
 // Zod Validation Schemas
@@ -106,7 +172,6 @@ export async function signup(req, res) {
 
     if (existingUser) {
       logAuditFailure('signup', req, 'Email already exists', { name, email });
-      // Keep it generic to avoid email enumeration
       return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
 
@@ -140,15 +205,48 @@ export async function signup(req, res) {
 }
 
 export async function login(req, res) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  let emailInput = req.body?.email || 'unknown';
+
   try {
-    // 1. Audit and Validate request body via Zod
+    // 1. IP Rate Limiting check (Layer 1)
+    if (!checkIpRateLimit(ip)) {
+      logAuditFailure('login_rate_limit_ip', req, 'IP address blocked due to excessive login attempts.', { email: emailInput });
+      // Delay response slightly to slow down attackers, then return generic incorrect password response
+      await new Promise(r => setTimeout(r, 1500));
+      return res.status(400).json({ error: 'Invalid email or password.' });
+    }
+
+    // 2. Audit and Validate request body via Zod
     const result = loginSchema.safeParse(req.body);
     if (!result.success) {
       logAuditFailure('login', req, result.error.errors, req.body);
-      return res.status(400).json({ error: 'Invalid credentials or request data.' });
+      return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
     const { email, password } = result.data;
+    emailInput = email; // update fallback value for logs
+
+    // 3. Account Lockout check (Layer 2)
+    const account = getAccountRecord(email);
+    const now = Date.now();
+
+    if (account.lockUntil && now < account.lockUntil) {
+      // Hammering penalty: extend lock time to prevent continuous brute force
+      account.lockUntil = now + 15 * 60 * 1000;
+      logAuditFailure('login_account_locked', req, 'Attempt on locked account. Lock period extended.', { email });
+      
+      // Delay response to prevent time analysis of lockout status, then return generic wrong credentials error
+      await new Promise(r => setTimeout(r, 2000));
+      return res.status(400).json({ error: 'Invalid email or password.' });
+    }
+
+    // 4. Adaptive Failure Penalty (Linear delay multiplier starting on 3rd fail)
+    if (account.count >= 2) {
+      const delay = Math.min(10000, (account.count - 1) * 1000); // 1s on 3rd attempt, 2s on 4th, up to 10s max
+      logAuditFailure('login_adaptive_delay', req, `Enforcing brute-force delay of ${delay}ms`, { email });
+      await new Promise(r => setTimeout(r, delay));
+    }
 
     // Find user
     const user = await prisma.user.findUnique({
@@ -156,6 +254,7 @@ export async function login(req, res) {
     });
 
     if (!user) {
+      recordAccountFailure(email);
       logAuditFailure('login', req, 'User not found', { email });
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
@@ -163,9 +262,13 @@ export async function login(req, res) {
     // Compare passwords
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      recordAccountFailure(email);
       logAuditFailure('login', req, 'Password mismatch', { email });
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
+
+    // Clear failures on successful login
+    recordAccountSuccess(email);
 
     // Generate JWT
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
