@@ -705,24 +705,14 @@ export default function App() {
               </h1>
               <p className="text-[10px] text-slate-400 tracking-wider">SECURE MULTI-CLOUD</p>
             </div>
-          </div>
-
-          {/* Desktop Nav */}
+          </div>          {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-8 text-sm text-slate-350 font-medium">
             <a href="#features" className="hover:text-sky-450 transition-colors">Features</a>
             <a href="#workflow" className="hover:text-sky-450 transition-colors">Workflow</a>
-            <a href="#preview" className="hover:text-sky-450 transition-colors">Dashboard</a>
-            <a href="#pricing" className="hover:text-sky-450 transition-colors">Pricing</a>
             <a href="#faq" className="hover:text-sky-450 transition-colors">FAQ</a>
           </nav>
 
           <div className="flex items-center gap-4">
-            <button 
-              onClick={enterLiveDemo}
-              className="text-xs text-sky-400 hover:text-white px-4 py-2 border border-sky-400/20 hover:bg-sky-400/10 rounded-lg font-semibold transition-all cursor-pointer hidden sm:block"
-            >
-              Live Demo
-            </button>
             <button 
               onClick={() => {
                 setAuthState('login');
@@ -761,12 +751,6 @@ export default function App() {
               className="px-8 py-4 bg-gradient-to-r from-sky-400 to-indigo-500 hover:from-sky-500 hover:to-indigo-600 text-slate-950 font-bold rounded-xl text-sm transition-all hover:scale-105 shadow-xl shadow-sky-500/10 flex items-center gap-2 cursor-pointer"
             >
               Get Started Free <ArrowRight className="w-4.5 h-4.5" />
-            </button>
-            <button 
-              onClick={enterLiveDemo}
-              className="px-8 py-4 bg-slate-900 border border-slate-800 hover:border-slate-700 text-white rounded-xl text-sm transition-all hover:bg-slate-850 flex items-center gap-2 cursor-pointer"
-            >
-              Explore Live Demo
             </button>
           </div>
 
@@ -1030,75 +1014,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* 5. Dashboard Preview Section */}
-        <section id="preview" className="w-full max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10">
-          <div className="text-center mb-16">
-            <h2 className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-3">Live Console View</h2>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-white">Clean, high-fidelity monitoring.</h3>
-          </div>
-
-          <div className="glass-panel rounded-2xl border border-white/5 shadow-2xl p-6 relative overflow-hidden bg-slate-950/40">
-            {/* Window bar */}
-            <div className="flex items-center gap-2 mb-6 border-b border-white/5 pb-4">
-              <span className="w-3 h-3 bg-rose-500 rounded-full"></span>
-              <span className="w-3 h-3 bg-amber-500 rounded-full"></span>
-              <span className="w-3 h-3 bg-emerald-500 rounded-full"></span>
-              <span className="text-xs text-slate-500 ml-4 font-mono">https://cloudvault.io/console</span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Sidebar Mock */}
-              <div className="hidden lg:block bg-slate-900/60 border border-white/5 p-4 rounded-xl space-y-6">
-                <div className="text-xs font-bold text-white tracking-widest flex items-center gap-2">
-                  <Cloud className="w-4 h-4 text-sky-400 animate-pulse" /> CLOUDVAULT
-                </div>
-                <div className="space-y-2">
-                  <div className="p-2 px-3 bg-sky-500/10 text-sky-400 rounded-lg text-xs font-semibold flex items-center gap-2"><HardDrive className="w-4 h-4" /> Dashboard</div>
-                  <div className="p-2 px-3 text-slate-400 hover:text-white rounded-lg text-xs flex items-center gap-2"><FileText className="w-4 h-4" /> My Files</div>
-                  <div className="p-2 px-3 text-slate-400 hover:text-white rounded-lg text-xs flex items-center gap-2"><Activity className="w-4 h-4" /> Health</div>
-                  <div className="p-2 px-3 text-slate-400 hover:text-white rounded-lg text-xs flex items-center gap-2"><Settings className="w-4 h-4" /> Settings</div>
-                </div>
-              </div>
-
-              {/* Main Content Mock */}
-              <div className="lg:col-span-2 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Gauge */}
-                  <div className="bg-slate-900/60 border border-white/5 p-6 rounded-xl flex items-center gap-6">
-                    <div className="relative w-20 h-20 flex items-center justify-center">
-                      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                        <circle cx="50" cy="50" r="40" fill="transparent" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
-                        <circle cx="50" cy="50" r="40" fill="transparent" stroke="#38bdf8" strokeWidth="8" strokeDasharray="251" strokeDashoffset="75" strokeLinecap="round" />
-                      </svg>
-                      <span className="absolute text-sm font-extrabold text-white">70%</span>
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase mb-1">Capacity Gauge</h4>
-                      <p className="text-lg font-extrabold text-white">14.5 GB / 20 GB</p>
-                      <p className="text-[10px] text-emerald-400 mt-1">Saved 42% via Brotli</p>
-                    </div>
-                  </div>
-
-                  {/* Provider List */}
-                  <div className="bg-slate-900/60 border border-white/5 p-6 rounded-xl space-y-3">
-                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Storage Outpost Status</h4>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>Cloudflare R2</span>
-                      <span className="text-slate-400 font-mono">60 ms</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="flex items-center gap-2"><span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>Backblaze B2</span>
-                      <span className="text-slate-400 font-mono">95 ms</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SVG Line Chart */}
-                <PerformanceChart />
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* 6. Why CloudVault Comparison */}
         <section className="w-full max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10">
@@ -1147,82 +1062,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* 7. Pricing Section */}
-        <section id="pricing" className="w-full max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10">
-          <div className="text-center mb-16">
-            <h2 className="text-xs font-bold text-sky-400 uppercase tracking-widest mb-3">Subscription plans</h2>
-            <h3 className="text-3xl md:text-4xl font-extrabold text-white">Fair, transparent pricing.</h3>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Free */}
-            <div className="glass-panel rounded-xl p-8 border border-white/5 flex flex-col justify-between">
-              <div>
-                <h4 className="text-sm font-bold text-slate-400 uppercase mb-4">Vault Starter</h4>
-                <div className="text-4xl font-extrabold text-white mb-6">$0<span className="text-xs font-medium text-slate-500"> / mo</span></div>
-                <ul className="space-y-3.5 text-xs text-slate-350 mb-8">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> 10GB Brotli-compressed storage</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Dual-cloud replication</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> AES-256 encryption keys</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Self-healing failover routing</li>
-                </ul>
-              </div>
-              <button 
-                onClick={enterLiveDemo}
-                className="w-full py-3 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:border-slate-750 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
-              >
-                Launch Demo
-              </button>
-            </div>
-
-            {/* Pro - Highlighted */}
-            <div className="glass-panel rounded-xl p-8 border border-sky-400/30 flex flex-col justify-between relative bg-slate-950/20 shadow-sky-500/5 shadow-2xl scale-102">
-              <div className="absolute top-0 right-8 -translate-y-1/2 bg-gradient-to-r from-sky-400 to-indigo-500 text-slate-950 px-3 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-widest">
-                RECOMMENDED
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-sky-400 uppercase mb-4">Vault Professional</h4>
-                <div className="text-4xl font-extrabold text-white mb-6">$12<span className="text-xs font-medium text-slate-500"> / mo</span></div>
-                <ul className="space-y-3.5 text-xs text-slate-350 mb-8">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-400 shrink-0" /> 100GB Brotli-compressed storage</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-400 shrink-0" /> Multi-cloud distributed chunking</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-400 shrink-0" /> Direct S3 client dashboard endpoints</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-400 shrink-0" /> Priority API performance limits</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-sky-400 shrink-0" /> 24/7 dedicated support</li>
-                </ul>
-              </div>
-              <button 
-                onClick={() => {
-                  setAuthState('signup');
-                  setShowAuthModal(true);
-                }}
-                className="w-full py-3 bg-gradient-to-r from-sky-400 to-indigo-500 hover:from-sky-500 hover:to-indigo-650 text-slate-950 rounded-lg text-xs font-extrabold shadow-lg shadow-sky-500/10 transition-all cursor-pointer hover:scale-102"
-              >
-                Get Started
-              </button>
-            </div>
-
-            {/* Enterprise */}
-            <div className="glass-panel rounded-xl p-8 border border-white/5 flex flex-col justify-between">
-              <div>
-                <h4 className="text-sm font-bold text-slate-400 uppercase mb-4">Vault Enterprise</h4>
-                <div className="text-4xl font-extrabold text-white mb-6">Custom</div>
-                <ul className="space-y-3.5 text-xs text-slate-350 mb-8">
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Unlimited distributed storage quotas</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Multi-region target storage buckets</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Custom enterprise SSO (SAML)</li>
-                  <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400 shrink-0" /> Dedicated node endpoint setups</li>
-                </ul>
-              </div>
-              <a 
-                href="mailto:sales@cloudvault.io" 
-                className="w-full py-3 bg-slate-900 border border-slate-800 hover:bg-slate-850 hover:border-slate-750 text-white rounded-lg text-xs font-bold transition-all text-center block cursor-pointer"
-              >
-                Contact Sales
-              </a>
-            </div>
-          </div>
-        </section>
 
         {/* 8. Testimonials Section */}
         <section className="w-full max-w-7xl mx-auto px-6 py-24 border-t border-white/5 relative z-10">
