@@ -1,16 +1,103 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/db.js';
+import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cloudvault-super-secret-key-12345';
+const AUDIT_LOG_PATH = path.join(process.cwd(), 'auth_audit.log');
+
+// HTML tag detector pattern to prevent injections (replaces silent cleaning with immediate rejection)
+const HTML_TAG_PATTERN = /<\/?[a-z][\s\S]*>/i;
+
+// Audit logger for security monitoring
+function logAuditFailure(action, req, errorDetails, payload) {
+  const timestamp = new Date().toISOString();
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  
+  // Redact confidential fields in payload
+  const redactedPayload = { ...payload };
+  if (redactedPayload.password) redactedPayload.password = '[REDACTED]';
+  if (redactedPayload.newPassword) redactedPayload.newPassword = '[REDACTED]';
+  if (redactedPayload.token) redactedPayload.token = '[REDACTED]';
+
+  const logEntry = JSON.stringify({
+    timestamp,
+    ip,
+    action,
+    error: errorDetails,
+    payload: redactedPayload
+  });
+
+  console.warn(`[AUTH AUDIT FAILURE] ${logEntry}`);
+  
+  try {
+    fs.appendFileSync(AUDIT_LOG_PATH, logEntry + '\n');
+  } catch (err) {
+    console.error('Failed to write to auth audit log file:', err);
+  }
+}
+
+// Zod Validation Schemas
+const freeTextSchema = z.string()
+  .min(2, 'Must be at least 2 characters')
+  .max(100, 'Must be under 100 characters')
+  .refine(val => !HTML_TAG_PATTERN.test(val), {
+    message: 'HTML/Script tags are not allowed'
+  });
+
+const emailSchema = z.string()
+  .email('Must be a valid email format')
+  .max(100, 'Email must be under 100 characters')
+  .refine(val => !HTML_TAG_PATTERN.test(val), {
+    message: 'HTML/Script tags are not allowed in email'
+  });
+
+const passwordSchema = z.string()
+  .min(8, 'Must be at least 8 characters')
+  .max(100, 'Must be under 100 characters')
+  .refine(val => !HTML_TAG_PATTERN.test(val), {
+    message: 'HTML/Script tags are not allowed in password'
+  });
+
+const tokenSchema = z.string()
+  .min(10, 'Token is too short')
+  .max(1000, 'Token is too long')
+  .refine(val => !HTML_TAG_PATTERN.test(val), {
+    message: 'HTML/Script tags are not allowed in token'
+  });
+
+const signupSchema = z.object({
+  name: freeTextSchema,
+  email: emailSchema,
+  password: passwordSchema
+});
+
+const loginSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema
+});
+
+const forgotPasswordSchema = z.object({
+  email: emailSchema
+});
+
+const resetPasswordSchema = z.object({
+  token: tokenSchema,
+  newPassword: passwordSchema
+});
 
 export async function signup(req, res) {
   try {
-    const { name, email, password } = req.body;
-
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required.' });
+    // 1. Audit and Validate request body via Zod
+    const result = signupSchema.safeParse(req.body);
+    if (!result.success) {
+      logAuditFailure('signup', req, result.error.errors, req.body);
+      return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
+
+    const { name, email, password } = result.data;
 
     // Check if user exists
     const existingUser = await prisma.user.findUnique({
@@ -18,7 +105,9 @@ export async function signup(req, res) {
     });
 
     if (existingUser) {
-      return res.status(400).json({ error: 'An account with this email already exists.' });
+      logAuditFailure('signup', req, 'Email already exists', { name, email });
+      // Keep it generic to avoid email enumeration
+      return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
 
     // Hash password asynchronously
@@ -52,11 +141,14 @@ export async function signup(req, res) {
 
 export async function login(req, res) {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+    // 1. Audit and Validate request body via Zod
+    const result = loginSchema.safeParse(req.body);
+    if (!result.success) {
+      logAuditFailure('login', req, result.error.errors, req.body);
+      return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
+
+    const { email, password } = result.data;
 
     // Find user
     const user = await prisma.user.findUnique({
@@ -64,12 +156,14 @@ export async function login(req, res) {
     });
 
     if (!user) {
+      logAuditFailure('login', req, 'User not found', { email });
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
     // Compare passwords
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      logAuditFailure('login', req, 'Password mismatch', { email });
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
@@ -92,17 +186,21 @@ export async function login(req, res) {
 
 export async function forgotPassword(req, res) {
   try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required.' });
+    // 1. Audit and Validate request body via Zod
+    const result = forgotPasswordSchema.safeParse(req.body);
+    if (!result.success) {
+      logAuditFailure('forgotPassword', req, result.error.errors, req.body);
+      return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
+
+    const { email } = result.data;
 
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase() }
     });
 
     if (!user) {
+      logAuditFailure('forgotPassword', req, 'Email not registered', { email });
       return res.json({ message: 'If that email exists in our system, we have sent reset instructions.' });
     }
 
@@ -133,14 +231,18 @@ export async function forgotPassword(req, res) {
 
 export async function resetPassword(req, res) {
   try {
-    const { token, newPassword } = req.body;
-
-    if (!token || !newPassword) {
-      return res.status(400).json({ error: 'Token and new password are required.' });
+    // 1. Audit and Validate request body via Zod
+    const result = resetPasswordSchema.safeParse(req.body);
+    if (!result.success) {
+      logAuditFailure('resetPassword', req, result.error.errors, req.body);
+      return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
+
+    const { token, newPassword } = result.data;
 
     const decoded = jwt.decode(token);
     if (!decoded || !decoded.userId) {
+      logAuditFailure('resetPassword', req, 'Malformed reset token decoded payload', { token });
       return res.status(400).json({ error: 'Invalid or malformed reset token.' });
     }
 
@@ -149,6 +251,7 @@ export async function resetPassword(req, res) {
     });
 
     if (!user) {
+      logAuditFailure('resetPassword', req, 'User ID in token does not exist', { userId: decoded.userId });
       return res.status(404).json({ error: 'User not found.' });
     }
 
@@ -156,6 +259,7 @@ export async function resetPassword(req, res) {
     try {
       jwt.verify(token, secret);
     } catch (err) {
+      logAuditFailure('resetPassword', req, 'JWT signature verify failed', { token });
       return res.status(400).json({ error: 'Invalid or expired password reset token.' });
     }
 
