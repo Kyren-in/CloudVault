@@ -8,12 +8,9 @@ const __dirname = path.dirname(__filename);
 
 // In-memory health and latency status that can be toggled via backend controller
 export const simulatedHealthStatus = {
-  aws: { online: true, latency: 120 },
-  gcp: { online: true, latency: 90 },
   backblaze: { online: true, latency: 150 },
   cloudflare: { online: true, latency: 70 },
-  supabase: { online: true, latency: 180 },
-  oracle: { online: true, latency: 110 }
+  supabase: { online: true, latency: 180 }
 };
 
 export class LocalFileStorageProvider extends StorageProvider {

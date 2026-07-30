@@ -1,6 +1,5 @@
-import { LocalFileStorageProvider, simulatedHealthStatus } from './local.js';
+import { LocalFileStorageProvider } from './local.js';
 import { S3StorageProvider } from './s3.js';
-import { GCSStorageProvider } from './gcs.js';
 import * as cryptoService from '../services/crypto.js';
 
 // Configuration thresholds (lowered for easier testing, can be set via env)
@@ -54,33 +53,14 @@ class StorageManager {
     const useMock = process.env.USE_MOCK_STORAGE !== 'false';
 
     if (useMock) {
-      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 6 simulated clouds.');
-      this.providers.aws = new LocalFileStorageProvider('aws');
-      this.providers.gcp = new LocalFileStorageProvider('gcp');
+      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 3 simulated clouds.');
       this.providers.backblaze = new LocalFileStorageProvider('backblaze');
       this.providers.cloudflare = new LocalFileStorageProvider('cloudflare');
       this.providers.supabase = new LocalFileStorageProvider('supabase');
-      this.providers.oracle = new LocalFileStorageProvider('oracle');
     } else {
       console.log('CloudVault is running in PRODUCTION CLOUD STORAGE mode.');
       
-      // 1. AWS S3
-      if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-        this.providers.aws = new S3StorageProvider('aws', {
-          region: process.env.AWS_REGION,
-          endpoint: process.env.AWS_ENDPOINT,
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-        });
-      }
-      
-      // 2. Google Cloud Storage
-      const gcs = new GCSStorageProvider();
-      if (gcs.enabled) {
-        this.providers.gcp = gcs;
-      }
-      
-      // 3. Backblaze B2 (S3 adapter)
+      // 1. Backblaze B2 (S3 adapter)
       if (process.env.BACKBLAZE_ACCESS_KEY_ID && process.env.BACKBLAZE_SECRET_ACCESS_KEY) {
         this.providers.backblaze = new S3StorageProvider('backblaze', {
           region: process.env.BACKBLAZE_REGION,
@@ -90,7 +70,7 @@ class StorageManager {
         });
       }
 
-      // 4. Cloudflare R2 (S3 adapter)
+      // 2. Cloudflare R2 (S3 adapter)
       if (process.env.CLOUDFLARE_ACCESS_KEY_ID && process.env.CLOUDFLARE_SECRET_ACCESS_KEY) {
         this.providers.cloudflare = new S3StorageProvider('cloudflare', {
           region: process.env.CLOUDFLARE_REGION || 'auto',
@@ -100,7 +80,7 @@ class StorageManager {
         });
       }
 
-      // 5. Supabase Storage (S3 adapter)
+      // 3. Supabase Storage (S3 adapter)
       const supabaseKeyId = process.env.SUPABASE_ACCESS_KEY_ID || process.env.GCP_S3_ACCESS_KEY_ID;
       const supabaseSecret = process.env.SUPABASE_SECRET_ACCESS_KEY || process.env.GCP_S3_SECRET_ACCESS_KEY;
       if (supabaseKeyId && supabaseSecret) {
@@ -112,21 +92,11 @@ class StorageManager {
         });
       }
 
-      // 6. Oracle Cloud Infrastructure Object Storage (S3 adapter)
-      if (process.env.ORACLE_ACCESS_KEY_ID && process.env.ORACLE_SECRET_ACCESS_KEY) {
-        this.providers.oracle = new S3StorageProvider('oracle', {
-          region: process.env.ORACLE_REGION || 'us-ashburn-1',
-          endpoint: process.env.ORACLE_ENDPOINT,
-          accessKeyId: process.env.ORACLE_ACCESS_KEY_ID,
-          secretAccessKey: process.env.ORACLE_SECRET_ACCESS_KEY
-        });
-      }
-
-      // Fallback: if absolutely nothing is configured, provision AWS & GCP local mocks so server starts
+      // Fallback: if absolutely nothing is configured, provision backblaze & cloudflare local mocks so server starts
       if (Object.keys(this.providers).length === 0) {
         console.log('No cloud credentials provided. Initializing local mock folders as fallback.');
-        this.providers.aws = new LocalFileStorageProvider('aws');
-        this.providers.gcp = new LocalFileStorageProvider('gcp');
+        this.providers.backblaze = new LocalFileStorageProvider('backblaze');
+        this.providers.cloudflare = new LocalFileStorageProvider('cloudflare');
       }
     }
   }
@@ -134,12 +104,9 @@ class StorageManager {
   async getProvidersStatus() {
     const statuses = {};
     const friendlyNames = {
-      aws: 'AWS S3',
-      gcp: 'Google Cloud Storage',
       backblaze: 'Backblaze B2',
       cloudflare: 'Cloudflare R2',
-      supabase: 'Supabase Storage',
-      oracle: 'Oracle Cloud Storage'
+      supabase: 'Supabase Storage'
     };
 
     const statusPromises = Object.entries(this.providers).map(async ([key, provider]) => {
@@ -176,13 +143,6 @@ class StorageManager {
       }
 
       let providerName = friendlyNames[key] || `Custom S3 (${key})`;
-      if (key === 'aws' && process.env.AWS_ENDPOINT) {
-        if (process.env.AWS_ENDPOINT.includes('backblazeb2') || process.env.AWS_ENDPOINT.includes('backblaze')) {
-          providerName = 'Backblaze B2';
-        } else if (process.env.AWS_ENDPOINT.includes('cloudflare') || process.env.AWS_ENDPOINT.includes('r2')) {
-          providerName = 'Cloudflare R2';
-        }
-      }
 
       statuses[key] = {
         name: providerName,

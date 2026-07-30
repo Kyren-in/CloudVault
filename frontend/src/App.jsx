@@ -74,10 +74,11 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState({
     storageUsed: { originalBytes: 0, cloudBytes: 0, savingsBytes: 0 },
-    distribution: { awsChunks: 0, gcpChunks: 0 },
+    distribution: { backblazeChunks: 0, cloudflareChunks: 0, supabaseChunks: 0 },
     providers: {
-      aws: { name: 'AWS S3', type: 'aws', online: true, latency: 120, isMock: true },
-      gcp: { name: 'Google Cloud Storage', type: 'gcp', online: true, latency: 90, isMock: true }
+      backblaze: { name: 'Backblaze B2', type: 'backblaze', online: true, latency: 150, isMock: true },
+      cloudflare: { name: 'Cloudflare R2', type: 'cloudflare', online: true, latency: 70, isMock: true },
+      supabase: { name: 'Supabase Storage', type: 'supabase', online: true, latency: 180, isMock: true }
     }
   });
   
@@ -649,12 +650,9 @@ export default function App() {
   // Calculate percentages dynamically based on registered providers
   const cloudUsed = stats.storageUsed.cloudBytes;
   const getProviderQuota = (key) => {
-    if (key === 'aws') return 5 * 1024 * 1024 * 1024;
-    if (key === 'gcp') return 5 * 1024 * 1024 * 1024;
     if (key === 'backblaze') return 10 * 1024 * 1024 * 1024;
     if (key === 'cloudflare') return 10 * 1024 * 1024 * 1024;
     if (key === 'supabase') return 1 * 1024 * 1024 * 1024;
-    if (key === 'oracle') return 10 * 1024 * 1024 * 1024;
     return 5 * 1024 * 1024 * 1024;
   };
   const totalFreeTier = Object.keys(stats.providers).reduce((sum, key) => sum + getProviderQuota(key), 0) || (10 * 1024 * 1024 * 1024);
@@ -904,12 +902,9 @@ export default function App() {
                       const isLarge = file.size >= (10 * 1024 * 1024);
                       const fileProviders = [...new Set(file.chunks.map(c => c.provider))];
                       const friendlyNames = {
-                        aws: 'AWS',
-                        gcp: 'GCP',
                         backblaze: 'B2',
                         cloudflare: 'R2',
-                        supabase: 'Supa',
-                        oracle: 'OCI'
+                        supabase: 'Supa'
                       };
                       
                       return (
