@@ -74,11 +74,10 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState({
     storageUsed: { originalBytes: 0, cloudBytes: 0, savingsBytes: 0 },
-    distribution: { backblazeChunks: 0, cloudflareChunks: 0, supabaseChunks: 0 },
+    distribution: { backblazeChunks: 0, cloudflareChunks: 0 },
     providers: {
       backblaze: { name: 'Backblaze B2', type: 'backblaze', online: true, latency: 150, isMock: true },
-      cloudflare: { name: 'Cloudflare R2', type: 'cloudflare', online: true, latency: 70, isMock: true },
-      supabase: { name: 'Supabase Storage', type: 'supabase', online: true, latency: 180, isMock: true }
+      cloudflare: { name: 'Cloudflare R2', type: 'cloudflare', online: true, latency: 70, isMock: true }
     }
   });
   
@@ -652,7 +651,6 @@ export default function App() {
   const getProviderQuota = (key) => {
     if (key === 'backblaze') return 10 * 1024 * 1024 * 1024;
     if (key === 'cloudflare') return 10 * 1024 * 1024 * 1024;
-    if (key === 'supabase') return 1 * 1024 * 1024 * 1024;
     return 5 * 1024 * 1024 * 1024;
   };
   const totalFreeTier = Object.keys(stats.providers).reduce((sum, key) => sum + getProviderQuota(key), 0) || (10 * 1024 * 1024 * 1024);
@@ -903,8 +901,7 @@ export default function App() {
                       const fileProviders = [...new Set(file.chunks.map(c => c.provider))];
                       const friendlyNames = {
                         backblaze: 'B2',
-                        cloudflare: 'R2',
-                        supabase: 'Supa'
+                        cloudflare: 'R2'
                       };
                       
                       return (

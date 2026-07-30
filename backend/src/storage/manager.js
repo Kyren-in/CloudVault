@@ -53,10 +53,9 @@ class StorageManager {
     const useMock = process.env.USE_MOCK_STORAGE !== 'false';
 
     if (useMock) {
-      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 3 simulated clouds.');
+      console.log('CloudVault is running in OFFLINE MOCK STORAGE mode with 2 simulated clouds.');
       this.providers.backblaze = new LocalFileStorageProvider('backblaze');
       this.providers.cloudflare = new LocalFileStorageProvider('cloudflare');
-      this.providers.supabase = new LocalFileStorageProvider('supabase');
     } else {
       console.log('CloudVault is running in PRODUCTION CLOUD STORAGE mode.');
       
@@ -80,18 +79,6 @@ class StorageManager {
         });
       }
 
-      // 3. Supabase Storage (S3 adapter)
-      const supabaseKeyId = process.env.SUPABASE_ACCESS_KEY_ID || process.env.GCP_S3_ACCESS_KEY_ID;
-      const supabaseSecret = process.env.SUPABASE_SECRET_ACCESS_KEY || process.env.GCP_S3_SECRET_ACCESS_KEY;
-      if (supabaseKeyId && supabaseSecret) {
-        this.providers.supabase = new S3StorageProvider('supabase', {
-          region: process.env.SUPABASE_REGION || process.env.GCP_S3_REGION || 'ap-southeast-1',
-          endpoint: process.env.SUPABASE_ENDPOINT || process.env.GCP_S3_ENDPOINT,
-          accessKeyId: supabaseKeyId,
-          secretAccessKey: supabaseSecret
-        });
-      }
-
       // Fallback: if absolutely nothing is configured, provision backblaze & cloudflare local mocks so server starts
       if (Object.keys(this.providers).length === 0) {
         console.log('No cloud credentials provided. Initializing local mock folders as fallback.');
@@ -105,8 +92,7 @@ class StorageManager {
     const statuses = {};
     const friendlyNames = {
       backblaze: 'Backblaze B2',
-      cloudflare: 'Cloudflare R2',
-      supabase: 'Supabase Storage'
+      cloudflare: 'Cloudflare R2'
     };
 
     const statusPromises = Object.entries(this.providers).map(async ([key, provider]) => {
