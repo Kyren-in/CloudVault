@@ -172,11 +172,12 @@ export async function signup(req, res) {
 
     if (existingUser) {
       logAuditFailure('signup', req, 'Email already exists', { name, email });
+      // To prevent email enumeration, return a generic error indistinguishable from regular validation failures
       return res.status(400).json({ error: 'Invalid credentials or request data.' });
     }
 
-    // Hash password asynchronously
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password asynchronously with cost factor 12
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
     const user = await prisma.user.create({
@@ -212,38 +213,35 @@ export async function login(req, res) {
     // 1. IP Rate Limiting check (Layer 1)
     if (!checkIpRateLimit(ip)) {
       logAuditFailure('login_rate_limit_ip', req, 'IP address blocked due to excessive login attempts.', { email: emailInput });
-      // Delay response slightly to slow down attackers, then return generic incorrect password response
       await new Promise(r => setTimeout(r, 1500));
-      return res.status(400).json({ error: 'Invalid email or password.' });
+      return res.status(400).json({ error: 'Incorrect email or password' });
     }
 
     // 2. Audit and Validate request body via Zod
     const result = loginSchema.safeParse(req.body);
     if (!result.success) {
       logAuditFailure('login', req, result.error.errors, req.body);
-      return res.status(400).json({ error: 'Invalid email or password.' });
+      return res.status(400).json({ error: 'Incorrect email or password' });
     }
 
     const { email, password } = result.data;
-    emailInput = email; // update fallback value for logs
+    emailInput = email;
 
     // 3. Account Lockout check (Layer 2)
     const account = getAccountRecord(email);
     const now = Date.now();
 
     if (account.lockUntil && now < account.lockUntil) {
-      // Hammering penalty: extend lock time to prevent continuous brute force
       account.lockUntil = now + 15 * 60 * 1000;
       logAuditFailure('login_account_locked', req, 'Attempt on locked account. Lock period extended.', { email });
-      
-      // Delay response to prevent time analysis of lockout status, then return generic wrong credentials error
       await new Promise(r => setTimeout(r, 2000));
-      return res.status(400).json({ error: 'Invalid email or password.' });
+      // Locked accounts return the exact same credentials error payload
+      return res.status(400).json({ error: 'Incorrect email or password' });
     }
 
     // 4. Adaptive Failure Penalty (Linear delay multiplier starting on 3rd fail)
     if (account.count >= 2) {
-      const delay = Math.min(10000, (account.count - 1) * 1000); // 1s on 3rd attempt, 2s on 4th, up to 10s max
+      const delay = Math.min(10000, (account.count - 1) * 1000);
       logAuditFailure('login_adaptive_delay', req, `Enforcing brute-force delay of ${delay}ms`, { email });
       await new Promise(r => setTimeout(r, delay));
     }
@@ -256,15 +254,27 @@ export async function login(req, res) {
     if (!user) {
       recordAccountFailure(email);
       logAuditFailure('login', req, 'User not found', { email });
-      return res.status(400).json({ error: 'Invalid email or password.' });
+      return res.status(400).json({ error: 'Incorrect email or password' });
     }
 
-    // Compare passwords
+    // Compare passwords using cryptographically constant-time comparison
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       recordAccountFailure(email);
       logAuditFailure('login', req, 'Password mismatch', { email });
-      return res.status(400).json({ error: 'Invalid email or password.' });
+      return res.status(400).json({ error: 'Incorrect email or password' });
+    }
+
+    // --- On-Demand Rehashing Migration ---
+    // If the existing hash has a cost factor of 10 or lacks proper rounds (less than cost factor 12), rehash it
+    const needsRehash = !user.password.startsWith('$2a$12$') && !user.password.startsWith('$2b$12$');
+    if (needsRehash) {
+      const upgradedHash = await bcrypt.hash(password, 12);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password: upgradedHash }
+      });
+      console.log(`[SECURITY MIGRATION] Upgraded password hash to cost factor 12 for user ${user.email}`);
     }
 
     // Clear failures on successful login
@@ -304,7 +314,8 @@ export async function forgotPassword(req, res) {
 
     if (!user) {
       logAuditFailure('forgotPassword', req, 'Email not registered', { email });
-      return res.json({ message: 'If that email exists in our system, we have sent reset instructions.' });
+      // Always say: "If that email is registered, you'll receive a reset link"
+      return res.json({ message: "If that email is registered, you'll receive a reset link" });
     }
 
     const secret = JWT_SECRET + user.password;
@@ -318,7 +329,7 @@ export async function forgotPassword(req, res) {
     console.log(`==================================================\n`);
 
     const responsePayload = {
-      message: 'Password reset instructions have been generated. Check server console logs.'
+      message: "If that email is registered, you'll receive a reset link"
     };
 
     if (process.env.NODE_ENV !== 'production' || process.env.USE_MOCK_STORAGE !== 'false') {
@@ -338,7 +349,7 @@ export async function resetPassword(req, res) {
     const result = resetPasswordSchema.safeParse(req.body);
     if (!result.success) {
       logAuditFailure('resetPassword', req, result.error.errors, req.body);
-      return res.status(400).json({ error: 'Invalid credentials or request data.' });
+      return res.status(400).json({ error: 'Invalid or expired password reset token.' });
     }
 
     const { token, newPassword } = result.data;
@@ -346,7 +357,7 @@ export async function resetPassword(req, res) {
     const decoded = jwt.decode(token);
     if (!decoded || !decoded.userId) {
       logAuditFailure('resetPassword', req, 'Malformed reset token decoded payload', { token });
-      return res.status(400).json({ error: 'Invalid or malformed reset token.' });
+      return res.status(400).json({ error: 'Invalid or expired password reset token.' });
     }
 
     const user = await prisma.user.findUnique({
@@ -355,7 +366,7 @@ export async function resetPassword(req, res) {
 
     if (!user) {
       logAuditFailure('resetPassword', req, 'User ID in token does not exist', { userId: decoded.userId });
-      return res.status(404).json({ error: 'User not found.' });
+      return res.status(400).json({ error: 'Invalid or expired password reset token.' });
     }
 
     const secret = JWT_SECRET + user.password;
@@ -366,7 +377,8 @@ export async function resetPassword(req, res) {
       return res.status(400).json({ error: 'Invalid or expired password reset token.' });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // Hash password with cost factor 12
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     await prisma.user.update({
       where: { id: user.id },

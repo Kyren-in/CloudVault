@@ -2,6 +2,38 @@ import { prisma } from '../config/db.js';
 import { storageManager } from '../storage/manager.js';
 import { simulatedHealthStatus } from '../storage/local.js';
 
+function isValidFileContent(buffer, filename) {
+  if (buffer.length < 2) return true;
+  
+  // 1. Block PE Executables (MZ header)
+  if (buffer[0] === 0x4D && buffer[1] === 0x5A) {
+    return false;
+  }
+  
+  // 2. Block ELF binaries
+  if (buffer.length >= 4 && buffer[0] === 0x7F && buffer[1] === 0x45 && buffer[2] === 0x4C && buffer[3] === 0x46) {
+    return false;
+  }
+
+  // 3. Block Java Class files
+  if (buffer.length >= 4 && buffer[0] === 0xCA && buffer[1] === 0xFE && buffer[2] === 0xBA && buffer[3] === 0xBE) {
+    return false;
+  }
+
+  // 4. Block plaintext script files (PHP, HTML, Bash scripts)
+  const textSample = buffer.slice(0, 1000).toString('utf-8');
+  if (
+    textSample.includes('<?php') || 
+    textSample.includes('<script') || 
+    textSample.includes('#!/bin/sh') || 
+    textSample.includes('#!/bin/bash')
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * Uploads a file. Compresses, encrypts, chunks, uploads to cloud, and records in database.
  */
@@ -13,6 +45,11 @@ export async function uploadFile(req, res) {
 
     const { buffer, originalname } = req.file;
     const userId = req.userId;
+
+    // Validate file content type and prevent executable or script injections
+    if (!isValidFileContent(buffer, originalname)) {
+      return res.status(400).json({ error: 'Unsupported file type or malicious content detected.' });
+    }
 
     // Upload via storage manager
     const uploadResult = await storageManager.uploadFile(buffer, originalname);
