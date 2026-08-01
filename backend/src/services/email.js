@@ -17,7 +17,11 @@ if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS
-    }
+    },
+    tls: {
+      rejectUnauthorized: false // Bypasses self-signed certificate validation errors in cloud hosts
+    },
+    connectionTimeout: 10000 // 10 seconds timeout limit before failover
   });
   console.log(`[EMAIL SERVICE] Configured SMTP: ${SMTP_HOST}:${SMTP_PORT}`);
 } else {
