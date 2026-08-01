@@ -7,7 +7,7 @@ import {
   TrendingUp, Cpu, PieChart, BarChart2, Bell, Settings,
   HelpCircle, Star, ShieldCheck, ChevronRight, Laptop, Smartphone,
   Globe, AlertCircle, Play, Pause, Trash, ShieldAlert, Users,
-  Mail, History, CheckSquare, Sun, Moon
+  Mail, History, CheckSquare, Sun, Moon, Search
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
