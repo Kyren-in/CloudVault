@@ -7,12 +7,15 @@ generator client {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  email     String   @unique
-  password  String
-  createdAt DateTime @default(now())
-  files     File[]
+  id          String    @id @default(uuid())
+  name        String
+  email       String    @unique
+  password    String
+  role        String    @default("user") // "user" or "admin"
+  isSuspended Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  files       File[]
+  sessions    Session[]
 }
 
 model File {
@@ -34,10 +37,40 @@ model Chunk {
   id          String @id @default(uuid())
   fileId      String
   chunkNumber Int
-  provider    String // "aws", "gcp", "local"
+  provider    String // "aws", "gcp", "local", "backblaze", "cloudflare"
   bucket      String
   path        String
   hash        String // SHA-256 of the processed chunk
   size        Int    // Processed chunk size
   file        File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
 }
+
+model VerificationOtp {
+  id        String   @id @default(uuid())
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  refreshToken String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  lastUsedAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailLog {
+  id      String   @id @default(uuid())
+  email   String
+  type    String   // "OTP", "RESET", "WELCOME", "LOCKOUT"
+  status  String   // "SENT", "FAILED"
+  sentAt  DateTime @default(now())
+  details String?
+}
+
