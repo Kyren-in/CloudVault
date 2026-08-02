@@ -1,31 +1,13 @@
-import nodemailer from 'nodemailer';
 import { prisma } from '../config/db.js';
 
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = Number(process.env.SMTP_PORT) || 587;
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM = process.env.SMTP_FROM || 'no-reply@cloudvault.io';
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_FROM || 'no-reply@cloudvault.io';
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || 'CloudVault';
 
-let transporter = null;
-
-if (SMTP_HOST && SMTP_USER && SMTP_PASS) {
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    },
-    tls: {
-      rejectUnauthorized: false // Bypasses self-signed certificate validation errors in cloud hosts
-    },
-    connectionTimeout: 10000 // 10 seconds timeout limit before failover
-  });
-  console.log(`[EMAIL SERVICE] Configured SMTP: ${SMTP_HOST}:${SMTP_PORT}`);
+if (BREVO_API_KEY) {
+  console.log('[EMAIL SERVICE] Configured Brevo API integration');
 } else {
-  console.log('[EMAIL SERVICE] Credentials not set. Running in simulation mode.');
+  console.log('[EMAIL SERVICE] Brevo API Key not set. Running in simulation mode.');
 }
 
 async function logAndSendEmail(options) {
@@ -34,15 +16,35 @@ async function logAndSendEmail(options) {
   let details = null;
 
   try {
-    if (transporter) {
-      await transporter.sendMail({
-        from: SMTP_FROM,
-        to,
-        subject,
-        text,
-        html
+    if (BREVO_API_KEY) {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'api-key': BREVO_API_KEY,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          sender: {
+            name: BREVO_SENDER_NAME,
+            email: BREVO_SENDER_EMAIL
+          },
+          to: [
+            {
+              email: to
+            }
+          ],
+          subject,
+          htmlContent: html,
+          textContent: text
+        })
       });
-      console.log(`📧 [EMAIL SENT] To: ${to} | Subject: ${subject}`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Brevo API error: ${response.status} ${response.statusText}`);
+      }
+      console.log(`📧 [EMAIL SENT via Brevo] To: ${to} | Subject: ${subject}`);
     } else {
       // Mock logger fallback
       console.log(`\n==================================================`);
