@@ -55,5 +55,4 @@ services:
         sync: false
         placeholder: "Optional: The verified sender email in your Brevo account (e.g., no-reply@cloudvault.io)"
       - key: FRONTEND_URL
-        sync: false
-        placeholder: "The URL of your frontend application (e.g., https://cloud-vault-zeta.vercel.app)"
+        value: https://cloud-vault-zeta.vercel.app

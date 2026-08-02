@@ -10,7 +10,7 @@ import {
   Mail, History, CheckSquare, Sun, Moon, Search
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://cloudvault-backend-bmpf.onrender.com/api';
 
 export default function App() {
   // Session & Authentication
@@ -126,8 +126,17 @@ export default function App() {
 
   // Load reset token from URL on mount
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tokenFromUrl = params.get('resetToken');
+    const searchParams = new URLSearchParams(window.location.search);
+    let tokenFromUrl = searchParams.get('resetToken') || searchParams.get('token');
+
+    if (!tokenFromUrl && window.location.hash) {
+      const hashQuery = window.location.hash.split('?')[1];
+      if (hashQuery) {
+        const hashParams = new URLSearchParams(hashQuery);
+        tokenFromUrl = hashParams.get('resetToken') || hashParams.get('token');
+      }
+    }
+
     if (tokenFromUrl) {
       setResetToken(tokenFromUrl);
       setAuthState('reset');
@@ -512,6 +521,7 @@ export default function App() {
         addToast(data.message, 'success');
         if (data.resetToken) {
           setResetToken(data.resetToken);
+          setAuthState('reset');
           addToast('Password reset code generated.', 'success');
           addLog(`Dev mode reset token generated: ${data.resetToken.substring(0, 15)}...`, 'success');
         }

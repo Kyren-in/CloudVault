@@ -559,7 +559,7 @@ export async function forgotPassword(req, res) {
     // Token includes password hash in secret to support single-use
     const secret = JWT_SECRET + user.password;
     const token = jwt.sign({ userId: user.id }, secret, { expiresIn: '15m' });
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://cloud-vault-zeta.vercel.app').replace(/\/$/, '');
     const resetUrl = `${frontendUrl}/?resetToken=${token}`;
 
     // Send email
