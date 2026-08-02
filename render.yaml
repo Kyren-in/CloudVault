@@ -48,3 +48,9 @@ services:
         placeholder: "Optional: Supabase Region (e.g., ap-southeast-1)"
       - key: NODE_OPTIONS
         value: "--dns-result-order=ipv4first"
+      - key: BREVO_API_KEY
+        sync: false
+        placeholder: "Your Brevo API Key starting with xkeysib-"
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+        placeholder: "Optional: The verified sender email in your Brevo account (e.g., no-reply@cloudvault.io)"
