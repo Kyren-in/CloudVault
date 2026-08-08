@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://cloudvault-backend-bmpf.onrender.com/api';
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunk size for client-to-server uploads
+
 
 export default function App() {
   // Session & Authentication
