@@ -7,7 +7,7 @@ import {
   TrendingUp, Cpu, PieChart, BarChart2, Bell, Settings,
   HelpCircle, Star, ShieldCheck, ChevronRight, Laptop, Smartphone,
   Globe, AlertCircle, Play, Pause, Trash, ShieldAlert, Users,
-  Mail, History, CheckSquare, Sun, Moon, Search
+  Mail, History, CheckSquare, Sun, Moon, Search, ExternalLink
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://cloudvault-backend-bmpf.onrender.com/api';
@@ -44,7 +44,18 @@ const MIME_TYPES = {
   'csv': 'text/csv'
 };
 
-
+// Global fetch interceptor for auto logout on 401 Unauthorized (token expired)
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  const response = await originalFetch(...args);
+  if (response.status === 401) {
+    localStorage.removeItem('cv_token');
+    localStorage.removeItem('cv_refresh_token');
+    localStorage.removeItem('cv_user');
+    window.dispatchEvent(new Event('auth-unauthorized'));
+  }
+  return response;
+};
 
 export default function App() {
   // Session & Authentication
@@ -109,7 +120,12 @@ export default function App() {
   const [changePasswordNew, setChangePasswordNew] = useState('');
 
   // Settings configurations
-  const [theme, setTheme] = useState(localStorage.getItem('cv_theme') || 'dark');
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('cv_theme');
+    if (saved) return saved;
+    const systemIsLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    return systemIsLight ? 'light' : 'dark';
+  });
   const [language, setLanguage] = useState('en');
   const [uploadThreshold, setUploadThreshold] = useState(10); // MB
 
@@ -224,6 +240,23 @@ export default function App() {
     }
     localStorage.setItem('cv_theme', theme);
   }, [theme]);
+
+  // Listen for global auth-unauthorized event (triggered on 401 response)
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken('');
+      setRefreshToken('');
+      setUser(null);
+      setIsGuestMode(false);
+      setFiles([]);
+      setLogs([]);
+      setViewMode('landing');
+      addToast('Session expired. Please log in again.', 'warning');
+      addLog('Session expired, auto logged out.');
+    };
+    window.addEventListener('auth-unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth-unauthorized', handleUnauthorized);
+  }, []);
 
   // Fetch dashboard metadata when token is active
   useEffect(() => {
@@ -3145,11 +3178,23 @@ export default function App() {
                 // PDF viewer
                 if (ext === 'pdf') {
                   return (
-                    <iframe
-                      src={previewFile.url}
-                      title={previewFile.filename}
-                      className="w-full h-[65vh] rounded-lg border-0"
-                    />
+                    <div className="w-full h-full flex flex-col items-center gap-3 self-stretch">
+                      <div className="flex gap-2 justify-end w-full">
+                        <a 
+                          href={previewFile.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="px-3 py-1.5 text-[10px] font-bold bg-slate-900 border border-white/10 hover:border-sky-400 hover:text-sky-400 text-slate-400 rounded transition-all cursor-pointer uppercase flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Open in New Tab
+                        </a>
+                      </div>
+                      <embed
+                        src={previewFile.url}
+                        type="application/pdf"
+                        className="w-full h-[60vh] rounded-lg border-0"
+                      />
+                    </div>
                   );
                 }
                 
