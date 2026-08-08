@@ -153,8 +153,18 @@ class StorageManager {
     const originalSize = fileBuffer.length;
     const originalHash = cryptoService.calculateHash(fileBuffer);
 
-    // 1. Compress using Brotli
-    const compressed = cryptoService.compress(fileBuffer, 'brotli');
+    // Determine compression algorithm based on file type and size to prevent CPU/memory exhaustion on Render
+    const extension = filename.split('.').pop().toLowerCase();
+    const compressedExtensions = [
+      'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'wmv',
+      'mp3', 'wav', 'm4a', 'flac', 'aac', 'ogg',
+      'zip', 'rar', 'tar', 'gz', '7z', 'bz2', 'xz',
+      'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico'
+    ];
+    const compressionAlgo = (compressedExtensions.includes(extension) || fileBuffer.length > 25 * 1024 * 1024) ? 'none' : 'brotli';
+
+    // 1. Compress using selected algorithm
+    const compressed = cryptoService.compress(fileBuffer, compressionAlgo);
 
     // 2. Encrypt
     const fileKey = cryptoService.generateFileKey();
@@ -248,7 +258,7 @@ class StorageManager {
       size: originalSize,
       hash: originalHash,
       encrypted: true,
-      compression: 'brotli',
+      compression: compressionAlgo,
       encryptionKey: fileKey,
       iv,
       chunks: chunkRecords

@@ -16,6 +16,34 @@ const uploadPreferences = {
   concurrency: 3
 };
 
+const MIME_TYPES = {
+  'png': 'image/png',
+  'jpg': 'image/jpeg',
+  'jpeg': 'image/jpeg',
+  'webp': 'image/webp',
+  'gif': 'image/gif',
+  'svg': 'image/svg+xml',
+  'pdf': 'application/pdf',
+  'mp4': 'video/mp4',
+  'webm': 'video/webm',
+  'ogg': 'video/ogg',
+  'mp3': 'audio/mpeg',
+  'wav': 'audio/wav',
+  'txt': 'text/plain',
+  'json': 'application/json',
+  'html': 'text/html',
+  'css': 'text/css',
+  'js': 'application/javascript',
+  'jsx': 'application/javascript',
+  'ts': 'application/typescript',
+  'tsx': 'application/typescript',
+  'xml': 'application/xml',
+  'yaml': 'text/yaml',
+  'yml': 'text/yaml',
+  'sql': 'application/sql',
+  'csv': 'text/csv'
+};
+
 
 
 export default function App() {
@@ -1166,11 +1194,12 @@ export default function App() {
     await sleep(350);
 
     if (isGuestMode) {
-      const blob = new Blob(['Mock file content for: ' + fileObj.filename], { type: 'text/plain' });
+      const extension = fileObj.filename.split('.').pop().toLowerCase();
+      const mimeType = MIME_TYPES[extension] || 'text/plain';
+      const blob = new Blob(['Mock file content for: ' + fileObj.filename], { type: mimeType });
       
       if (isPreview) {
         const url = window.URL.createObjectURL(blob);
-        const extension = fileObj.filename.split('.').pop().toLowerCase();
         const textContent = 'Mock file content for: ' + fileObj.filename;
         
         setPreviewFile({
@@ -1215,11 +1244,13 @@ export default function App() {
         throw new Error(errorData.error || 'Server rejected retrieval.');
       }
 
-      const blob = await res.blob();
+      const fetchedBlob = await res.blob();
+      const extension = fileObj.filename.split('.').pop().toLowerCase();
+      const mimeType = MIME_TYPES[extension] || fetchedBlob.type;
+      const blob = new Blob([fetchedBlob], { type: mimeType });
       
       if (isPreview) {
         const url = window.URL.createObjectURL(blob);
-        const extension = fileObj.filename.split('.').pop().toLowerCase();
         let textContent = '';
         
         const textExtensions = ['txt', 'json', 'js', 'jsx', 'html', 'css', 'py', 'sh', 'md', 'xml', 'yaml', 'yml', 'ts', 'tsx', 'sql', 'csv', 'ini', 'cfg', 'log'];
