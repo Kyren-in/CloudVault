@@ -110,6 +110,7 @@ export default function App() {
   const uploadBytesUploadedRef = useRef(0);
 
   const [downloadingFile, setDownloadingFile] = useState(null); // { id, name, step, log: [] }
+  const [previewFile, setPreviewFile] = useState(null); // { id, filename, size, url, extension, textContent, blob }
   const [actionError, setActionError] = useState('');
 
   // Interactive Landing States
@@ -1105,13 +1106,14 @@ export default function App() {
     }
   };
 
-  // --- DOWNLOAD FLOW ---
-  const handleDownload = async (fileObj) => {
+  // --- DOWNLOAD & PREVIEW FLOW ---
+  const handleDownload = async (fileObj, isPreview = false) => {
     setActionError('');
     setDownloadingFile({
       id: fileObj.id,
       name: fileObj.filename,
       step: 'metadata',
+      isPreview,
       log: ['Fetching file distribution map...']
     });
 
@@ -1165,19 +1167,41 @@ export default function App() {
 
     if (isGuestMode) {
       const blob = new Blob(['Mock file content for: ' + fileObj.filename], { type: 'text/plain' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileObj.filename;
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
       
-      setDownloadingFile(prev => ({ ...prev, step: 'done' }));
-      addToast('Download completed successfully!', 'success');
-      addLog(`[GUEST MODE] Download completed: ${fileObj.filename}`, 'success');
-      await sleep(800);
-      setDownloadingFile(null);
+      if (isPreview) {
+        const url = window.URL.createObjectURL(blob);
+        const extension = fileObj.filename.split('.').pop().toLowerCase();
+        const textContent = 'Mock file content for: ' + fileObj.filename;
+        
+        setPreviewFile({
+          id: fileObj.id,
+          filename: fileObj.filename,
+          size: fileObj.size,
+          url,
+          extension,
+          textContent,
+          blob
+        });
+
+        setDownloadingFile(prev => ({ ...prev, step: 'done' }));
+        addToast('Mock decryption complete! Opening preview...', 'success');
+        await sleep(600);
+        setDownloadingFile(null);
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileObj.filename;
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        
+        setDownloadingFile(prev => ({ ...prev, step: 'done' }));
+        addToast('Download completed successfully!', 'success');
+        addLog(`[GUEST MODE] Download completed: ${fileObj.filename}`, 'success');
+        await sleep(800);
+        setDownloadingFile(null);
+      }
       return;
     }
 
@@ -1192,21 +1216,49 @@ export default function App() {
       }
 
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileObj.filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-
-      setDownloadingFile(prev => ({ ...prev, step: 'done' }));
-      addToast('Download completed successfully!', 'success');
-      addLog(`File downloaded & decrypted: ${fileObj.filename}`, 'success');
       
-      await sleep(800);
-      setDownloadingFile(null);
+      if (isPreview) {
+        const url = window.URL.createObjectURL(blob);
+        const extension = fileObj.filename.split('.').pop().toLowerCase();
+        let textContent = '';
+        
+        const textExtensions = ['txt', 'json', 'js', 'jsx', 'html', 'css', 'py', 'sh', 'md', 'xml', 'yaml', 'yml', 'ts', 'tsx', 'sql', 'csv', 'ini', 'cfg', 'log'];
+        if (textExtensions.includes(extension)) {
+          textContent = await blob.text();
+        }
+
+        setPreviewFile({
+          id: fileObj.id,
+          filename: fileObj.filename,
+          size: fileObj.size,
+          url,
+          extension,
+          textContent,
+          blob
+        });
+
+        setDownloadingFile(prev => ({ ...prev, step: 'done' }));
+        addToast('Decryption complete! Opening preview...', 'success');
+        addLog(`File decrypted and prepared for preview: ${fileObj.filename}`, 'success');
+        await sleep(600);
+        setDownloadingFile(null);
+      } else {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileObj.filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        setDownloadingFile(prev => ({ ...prev, step: 'done' }));
+        addToast('Download completed successfully!', 'success');
+        addLog(`File downloaded & decrypted: ${fileObj.filename}`, 'success');
+        
+        await sleep(800);
+        setDownloadingFile(null);
+      }
     } catch (err) {
       setActionError(err.message);
       addToast(err.message, 'error');
@@ -1992,6 +2044,13 @@ export default function App() {
                                       <td className="py-3.5 pr-2 text-right">
                                         <div className="flex items-center justify-end gap-2">
                                           <button
+                                            onClick={() => handleDownload(file, true)}
+                                            className="p-1.5 text-slate-450 hover:text-sky-400 bg-slate-900 border border-white/5 rounded-lg hover:scale-105 transition-all cursor-pointer"
+                                            title="Decrypted Preview"
+                                          >
+                                            <Eye className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
                                             onClick={() => handleDownload(file)}
                                             className="p-1.5 text-slate-450 hover:text-sky-400 bg-slate-900 border border-white/5 rounded-lg hover:scale-105 transition-all cursor-pointer"
                                             title="Download and Decrypt"
@@ -2090,10 +2149,13 @@ export default function App() {
                               </td>
                               <td className="py-3.5 pr-2 text-right">
                                 <div className="flex items-center justify-end gap-2">
-                                  <button onClick={() => handleDownload(file)} className="p-1.5 text-slate-450 hover:text-sky-400 bg-slate-900 border border-white/5 rounded-lg cursor-pointer">
+                                  <button onClick={() => handleDownload(file, true)} className="p-1.5 text-slate-450 hover:text-sky-400 bg-slate-900 border border-white/5 rounded-lg hover:scale-105 transition-all cursor-pointer" title="Decrypted Preview">
+                                    <Eye className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button onClick={() => handleDownload(file)} className="p-1.5 text-slate-450 hover:text-sky-400 bg-slate-900 border border-white/5 rounded-lg cursor-pointer" title="Download and Decrypt">
                                     <Download className="w-3.5 h-3.5" />
                                   </button>
-                                  <button onClick={() => handleDelete(file.id, file.filename)} className="p-1.5 text-slate-450 hover:text-rose-455 bg-slate-900 border border-white/5 rounded-lg cursor-pointer">
+                                  <button onClick={() => handleDelete(file.id, file.filename)} className="p-1.5 text-slate-450 hover:text-rose-455 bg-slate-900 border border-white/5 rounded-lg cursor-pointer" title="Purge Asset">
                                     <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 </div>
@@ -2917,13 +2979,19 @@ export default function App() {
           <div className="w-full max-w-md glass-panel rounded-2xl p-6 shadow-2xl space-y-5 animate-fade-in">
             <div className="flex items-center gap-3 border-b border-white/5 pb-3">
               <div className="w-10 h-10 bg-violet-500/10 rounded-full flex items-center justify-center animate-bounce">
-                <Download className="w-5 h-5 text-violet-400" />
+                {downloadingFile.isPreview ? (
+                  <Eye className="w-5 h-5 text-violet-400" />
+                ) : (
+                  <Download className="w-5 h-5 text-violet-400" />
+                )}
               </div>
               <div>
                 <h3 className="text-xs font-bold text-slate-200 truncate max-w-[280px]">
-                  Downloading {downloadingFile.name}
+                  {downloadingFile.isPreview ? 'Decrypting' : 'Downloading'} {downloadingFile.name}
                 </h3>
-                <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Multi-Cloud Re-assembly</p>
+                <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">
+                  {downloadingFile.isPreview ? 'Secure Cloud Decryption' : 'Multi-Cloud Re-assembly'}
+                </p>
               </div>
             </div>
 
@@ -2974,6 +3042,167 @@ export default function App() {
                   {line}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================== OVERLAY MODAL: SECURE DECRYPTED PREVIEW ================== */}
+      {previewFile && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-filter backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl glass-panel rounded-2xl p-6 shadow-2xl space-y-4 animate-fade-in flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-white/5 pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-450 animate-pulse" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-200 truncate max-w-[400px] md:max-w-[600px]" title={previewFile.filename}>
+                    {previewFile.filename}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                    {formatBytes(previewFile.size)} | Decrypted Temporary Session Preview
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Download copy button */}
+                <button
+                  onClick={() => {
+                    const a = document.createElement('a');
+                    a.href = previewFile.url;
+                    a.download = previewFile.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    addToast('File saved to disk.', 'success');
+                  }}
+                  className="p-1.5 bg-slate-900 border border-white/5 text-slate-400 hover:text-sky-400 rounded-lg hover:scale-105 transition-all flex items-center gap-1.5 text-xs cursor-pointer font-bold"
+                  title="Save to disk"
+                >
+                  <Download className="w-3.5 h-3.5" /> Save
+                </button>
+                {/* Close Button */}
+                <button
+                  onClick={() => {
+                    window.URL.revokeObjectURL(previewFile.url);
+                    setPreviewFile(null);
+                  }}
+                  className="p-1.5 bg-slate-900 border border-white/5 text-slate-400 hover:text-rose-455 rounded-lg hover:scale-105 transition-all cursor-pointer"
+                  title="Close preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content - Auto responsive scrolling preview container */}
+            <div className="flex-1 overflow-y-auto min-h-[300px] flex items-center justify-center bg-slate-950/40 rounded-xl border border-white/5 p-4 relative custom-scrollbar">
+              {(() => {
+                const ext = previewFile.extension;
+                
+                // Image viewer
+                if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(ext)) {
+                  return (
+                    <img 
+                      src={previewFile.url} 
+                      alt={previewFile.filename} 
+                      className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-md animate-fade-in"
+                    />
+                  );
+                }
+                
+                // PDF viewer
+                if (ext === 'pdf') {
+                  return (
+                    <iframe
+                      src={previewFile.url}
+                      title={previewFile.filename}
+                      className="w-full h-[65vh] rounded-lg border-0"
+                    />
+                  );
+                }
+                
+                // Video viewer
+                if (['mp4', 'webm', 'ogg'].includes(ext)) {
+                  return (
+                    <video 
+                      src={previewFile.url} 
+                      controls 
+                      autoPlay
+                      className="max-w-full max-h-[60vh] rounded-lg shadow-lg"
+                    />
+                  );
+                }
+                
+                // Audio viewer
+                if (['mp3', 'wav', 'ogg'].includes(ext)) {
+                  return (
+                    <div className="w-full max-w-md flex flex-col items-center gap-4 py-8">
+                      <div className="w-16 h-16 bg-sky-500/10 rounded-full flex items-center justify-center text-sky-400 animate-pulse">
+                        <Sparkles className="w-8 h-8" />
+                      </div>
+                      <div className="text-center">
+                        <div className="text-xs text-slate-400 italic">Playing audio asset...</div>
+                      </div>
+                      <audio 
+                        src={previewFile.url} 
+                        controls 
+                        autoPlay
+                        className="w-full"
+                      />
+                    </div>
+                  );
+                }
+                
+                // Text / Code viewer
+                if (previewFile.textContent) {
+                  return (
+                    <div className="w-full h-full flex flex-col relative self-stretch">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(previewFile.textContent);
+                          addToast('Code copied to clipboard!', 'success');
+                        }}
+                        className="absolute right-4 top-4 px-2.5 py-1 text-[10px] font-bold bg-slate-900 border border-white/10 hover:border-sky-400 hover:text-sky-400 text-slate-400 rounded transition-all cursor-pointer uppercase flex items-center gap-1"
+                      >
+                        Copy
+                      </button>
+                      <pre className="w-full h-[60vh] overflow-auto text-left font-mono text-xs text-slate-300 p-4 bg-slate-950/80 rounded-lg border border-white/5 custom-scrollbar select-text whitespace-pre-wrap">
+                        {previewFile.textContent}
+                      </pre>
+                    </div>
+                  );
+                }
+
+                // Fallback for unsupported formats
+                return (
+                  <div className="text-center space-y-3 py-12">
+                    <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center text-amber-450 mx-auto">
+                      <AlertCircle className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-300">Preview Unsupported</h4>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Decrypting and displaying this file type inline is not supported by your browser.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const a = document.createElement('a');
+                        a.href = previewFile.url;
+                        a.download = previewFile.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        addToast('File saved to disk.', 'success');
+                      }}
+                      className="px-4 py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-xs font-bold transition-all shadow-lg shadow-sky-500/20 cursor-pointer"
+                    >
+                      Download Decrypted File
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
